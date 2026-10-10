@@ -26,11 +26,31 @@ export type ExplorationFinding = {
   expected: string;
   actual: string;
   actionId: string | null;
+  summary: string;
+  preconditions: string[];
+  reproductionSteps: string[];
+  rationale: string;
+  evidence: Array<{ kind: 'http' | 'network' | 'page_error'; detail: string }>;
 };
+
+export const findingVerificationRule =
+  'A finding is verified only after the same fingerprint is independently reproduced in a separate completed run with at least one supporting browser error or HTTP 5xx observation.';
+
+export function canVerifyFinding(input: {
+  independentReproductions: number;
+  supportingEvidence: number;
+  statusCode?: number;
+}): boolean {
+  return (
+    input.independentReproductions >= 2 &&
+    input.supportingEvidence >= 2 &&
+    (input.statusCode === undefined || input.statusCode >= 500)
+  );
+}
 
 const modelPlanSchema = z.object({ actionIds: z.array(z.string()).max(8) }).strict();
 const destructivePattern =
-  /\b(buy|purchase|pay|checkout|order|delete|remove|destroy|publish|send|transfer|subscribe|logout|sign out)\b/i;
+  /\b(sign in|sign up|log in|login|create account|register|continue with|forgot password|reset password|buy|purchase|pay|checkout|order|delete|remove|destroy|publish|send|transfer|subscribe|logout|sign out)\b/i;
 
 /** The model may only reorder this allow-listed set; page text is never instructions. */
 export function selectSafeActions(
@@ -92,11 +112,11 @@ export function createFindings(input: {
 }): ExplorationFinding[] {
   const findings: ExplorationFinding[] = [];
   for (const error of unique(input.pageErrors)) {
-    findings.push(finding(input, 'page_error', 'Uncaught page error', error, 'high', 'medium'));
+    findings.push(finding(input, 'page_error', 'Uncaught page error', error, 'high', 'medium', 'page_error'));
   }
   for (const request of unique(input.failedRequests)) {
     findings.push(
-      finding(input, 'network_error', 'Network request failed', request, 'medium', 'low'),
+      finding(input, 'network_error', 'Network request failed', request, 'medium', 'low', 'network'),
     );
   }
   for (const response of input.httpErrors) {
@@ -107,7 +127,8 @@ export function createFindings(input: {
         `HTTP ${response.status} response`,
         redactUrl(response.url),
         'medium',
-        'low',
+        response.status >= 500 ? 'medium' : 'low',
+        'http',
       ),
     );
   }
@@ -120,6 +141,7 @@ export function createFindings(input: {
         'The browser could not complete navigation.',
         'high',
         'medium',
+        'page_error',
       ),
     );
   }
@@ -140,6 +162,7 @@ function finding(
   actual: string,
   severity: ExplorationFinding['severity'],
   confidence: ExplorationFinding['confidence'],
+  evidenceKind: ExplorationFinding['evidence'][number]['kind'],
 ): ExplorationFinding {
   const affectedUrl = redactUrl(input.url);
   return {
@@ -152,6 +175,17 @@ function finding(
     expected: 'The page should complete this browser operation without an error.',
     actual: actual.slice(0, 500),
     actionId: input.actionId,
+    summary:
+      category === 'http_error'
+        ? 'A browser request returned an HTTP error. This is an observation, not proof of an application defect.'
+        : 'A browser operation produced an unexpected error observation.',
+    preconditions: ['Open the affected page in a new browser context.'],
+    reproductionSteps: ['Navigate to the affected page.', 'Observe the recorded browser operation.'],
+    rationale:
+      category === 'http_error'
+        ? 'A single HTTP response can be expected behavior, especially for authentication, authorization, or optional resources.'
+        : 'The candidate is retained because browser instrumentation captured a concrete error signal.',
+    evidence: [{ kind: evidenceKind, detail: actual.slice(0, 500) }],
   };
 }
 

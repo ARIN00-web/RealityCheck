@@ -60,6 +60,12 @@ export default function RunDetailPage() {
           <p className={`run-status ${run.status.toLowerCase()}`}>
             {run.status.replaceAll('_', ' ')}
           </p>
+          {run.status === 'SUCCEEDED' &&
+          run.events.some((event) => event.type === 'EXPLORATION_NO_ACTIONS') ? (
+            <p className="muted">
+              Execution completed, but no safe exploration actions were attempted for this page.
+            </p>
+          ) : null}
           {run.error ? <p className="feedback error">{run.error}</p> : null}
           <h2>Browser observations</h2>
           {run.events.length === 0 ? (

@@ -30,7 +30,20 @@ export type ExplorationCandidateAction = {
   kind: 'navigate' | 'click' | 'submit-empty';
   selector?: string;
   href?: string;
+  index?: number;
   label: string;
+};
+
+export type InspectableElement = {
+  kind: 'link' | 'button';
+  href?: string;
+  label: string;
+  index: number;
+  visible: boolean;
+  disabled?: boolean;
+  inForm?: boolean;
+  submit?: boolean;
+  roleButton?: boolean;
 };
 
 export type ExplorationPage = {
@@ -38,7 +51,22 @@ export type ExplorationPage = {
   title: string | null;
   text: string;
   actions: ExplorationCandidateAction[];
+  candidateSummary: CandidateSummary;
+  pageSummary: PageSummary;
 };
+
+export type CandidateSummary = {
+  anchors: number;
+  buttons: number;
+  roleButtons: number;
+  eligible: number;
+  rejected: Record<string, number>;
+};
+
+export type PageSummary = { readyState: string; bodyTextLength: number };
+
+const unsafeActionLabel =
+  /\b(sign in|sign up|log in|login|create account|register|continue with|forgot password|reset password|buy|purchase|pay|checkout|order|delete|remove|destroy|publish|send|transfer|subscribe|logout|sign out)\b/i;
 
 export type ExplorationActionResult = {
   action: ExplorationCandidateAction;
@@ -51,6 +79,10 @@ export type ExplorationActionResult = {
 export type ExplorationResult = {
   observation: BrowserObservation;
   actions: ExplorationActionResult[];
+  discoveredActions: number;
+  noActionReason: string | null;
+  candidateSummary: CandidateSummary;
+  pageSummary: PageSummary;
   pagesExplored: number;
 };
 
@@ -129,9 +161,50 @@ export async function exploreTarget(
     observation.navigation.outcome = response && response.status() >= 400 ? 'http_error' : 'loaded';
     observation.finalUrl = page.url();
     observation.title = await page.title().catch(() => null);
+    await waitForRenderedPage(page, options.navigationTimeoutMs);
 
-    const candidates = await planner(await describePage(page, url));
-    for (const action of candidates.slice(0, options.actionLimit)) {
+    const description = await describePage(page, url);
+    const discovered = description.actions;
+    if (observation.navigation.outcome === 'http_error') {
+      const reason = `Initial navigation returned HTTP ${observation.navigation.status}; no interactions were attempted.`;
+      observation.navigation.durationMs = Date.now() - startedAt;
+      return {
+        observation: await captureScreenshot(page, observation, options),
+        actions: discovered.map((action) => ({
+          action,
+          status: 'SKIPPED',
+          beforeUrl: page.url(),
+          afterUrl: page.url(),
+          error: reason,
+        })),
+        discoveredActions: discovered.length,
+        noActionReason: reason,
+        candidateSummary: description.candidateSummary,
+        pageSummary: description.pageSummary,
+        pagesExplored,
+      };
+    }
+    const proposed = await planner(description);
+    const discoveredById = new Map(discovered.map((action) => [action.id, action]));
+    const candidates = proposed
+      .map((action) => discoveredById.get(action.id))
+      .filter((action): action is ExplorationCandidateAction => Boolean(action))
+      .filter(isSafeBrowserAction);
+    const selected = candidates.slice(0, options.actionLimit);
+    actions.push(
+      ...discovered
+        .filter((action) => !selected.some(({ id }) => id === action.id))
+        .map((action) => ({
+          action,
+          status: 'SKIPPED' as const,
+          beforeUrl: page.url(),
+          afterUrl: page.url(),
+          error: isSafeBrowserAction(action)
+            ? 'Action was not selected within the exploration budget'
+            : 'Action was rejected by the browser safety policy',
+        })),
+    );
+    for (const action of selected) {
       const remainingMs = options.overallTimeoutMs - (Date.now() - startedAt);
       if (remainingMs <= 0) break;
       const beforeUrl = page.url();
@@ -152,18 +225,20 @@ export async function exploreTarget(
     observation.finalUrl = page.url();
     observation.title = await page.title().catch(() => null);
     observation.navigation.durationMs = Date.now() - startedAt;
-    try {
-      const screenshot = await page.screenshot({
-        type: 'png',
-        fullPage: false,
-        timeout: options.navigationTimeoutMs,
-      });
-      if (screenshot.byteLength <= options.artifactMaxBytes) observation.screenshot = screenshot;
-      else observation.screenshotError = 'Screenshot exceeded the configured artifact size limit';
-    } catch {
-      observation.screenshotError = 'Screenshot capture failed';
-    }
-    return { observation, actions, pagesExplored };
+    return {
+      observation: await captureScreenshot(page, observation, options),
+      actions,
+      discoveredActions: discovered.length,
+      noActionReason:
+        candidates.length === 0
+          ? discovered.length === 0
+            ? 'No eligible same-origin interactions were available.'
+            : 'Discovered interactions were rejected by the browser safety policy.'
+          : null,
+      candidateSummary: description.candidateSummary,
+      pageSummary: description.pageSummary,
+      pagesExplored,
+    };
   } catch (error) {
     observation.finalUrl = page.url() || null;
     observation.navigation.durationMs = Date.now() - startedAt;
@@ -220,33 +295,49 @@ async function configureSafety(
 
 async function describePage(page: Page, initialUrl: string): Promise<ExplorationPage> {
   const origin = new URL(initialUrl).origin;
-  const description = await page.evaluate((allowedOrigin) => {
+  const description = await page.evaluate(() => {
     const label = (element: Element): string =>
       (element.getAttribute('aria-label') || element.textContent || '').replace(/\s+/g, ' ').trim();
-    const actions: ExplorationCandidateAction[] = [];
+    const elements: InspectableElement[] = [];
     document.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((element, index) => {
-      const href = new URL(element.href, location.href);
-      if (href.origin === allowedOrigin) {
-        actions.push({
-          id: `link-${index}`,
-          kind: 'navigate',
-          href: href.toString(),
-          label: label(element),
-        });
-      }
-    });
-    document.querySelectorAll<HTMLButtonElement>('button').forEach((element, index) => {
-      if (element.disabled || element.type === 'submit' || element.closest('form')) return;
-      actions.push({
-        id: `button-${index}`,
-        kind: 'click',
-        selector: `button:nth-of-type(${index + 1})`,
+      const rect = element.getBoundingClientRect();
+      elements.push({
+        kind: 'link',
+        href: element.href,
         label: label(element),
+        index,
+        visible: rect.width > 0 && rect.height > 0,
       });
     });
-    return { text: (document.body?.innerText || '').slice(0, 2_000), actions };
-  }, origin);
-  return { url: page.url(), title: await page.title().catch(() => null), ...description };
+    document.querySelectorAll<HTMLElement>('button, [role="button"]').forEach((element, index) => {
+      const rect = element.getBoundingClientRect();
+      elements.push({
+        kind: 'button',
+        label: label(element),
+        index,
+        visible: rect.width > 0 && rect.height > 0,
+        disabled: 'disabled' in element && Boolean(element.disabled),
+        inForm: Boolean(element.closest('form')),
+        submit: element instanceof HTMLButtonElement && element.type === 'submit',
+        roleButton: element.getAttribute('role') === 'button',
+      });
+    });
+    return {
+      text: (document.body?.innerText || '').slice(0, 2_000),
+      elements,
+      pageSummary: {
+        readyState: document.readyState,
+        bodyTextLength: (document.body?.innerText || '').length,
+      },
+    };
+  });
+  return {
+    url: page.url(),
+    title: await page.title().catch(() => null),
+    text: description.text,
+    ...extractExplorationCandidatesWithSummary(description.elements, origin),
+    pageSummary: description.pageSummary,
+  };
 }
 
 async function executeAction(
@@ -260,11 +351,119 @@ async function executeAction(
     return;
   }
   if (action.kind === 'click' && action.selector) {
-    await page.locator(action.selector).click({ timeout });
+    await page
+      .locator(action.selector)
+      .nth(action.index ?? 0)
+      .click({ timeout });
     await page.waitForLoadState('domcontentloaded', { timeout }).catch(() => undefined);
     return;
   }
   throw new Error('Action is not allowed by the browser exploration policy');
+}
+
+export function extractExplorationCandidates(
+  elements: InspectableElement[],
+  origin: string,
+): ExplorationCandidateAction[] {
+  return extractExplorationCandidatesWithSummary(elements, origin).actions;
+}
+
+export function isSafeBrowserAction(action: ExplorationCandidateAction): boolean {
+  return !unsafeActionLabel.test(action.label);
+}
+
+export function extractExplorationCandidatesWithSummary(
+  elements: InspectableElement[],
+  origin: string,
+): { actions: ExplorationCandidateAction[]; candidateSummary: CandidateSummary } {
+  const candidateSummary: CandidateSummary = {
+    anchors: 0,
+    buttons: 0,
+    roleButtons: 0,
+    eligible: 0,
+    rejected: {},
+  };
+  const reject = (reason: string): void => {
+    candidateSummary.rejected[reason] = (candidateSummary.rejected[reason] ?? 0) + 1;
+  };
+  const actions = elements.reduce<ExplorationCandidateAction[]>((candidates, element) => {
+    if (element.kind === 'link') candidateSummary.anchors += 1;
+    else {
+      candidateSummary.buttons += 1;
+      if (element.roleButton) candidateSummary.roleButtons += 1;
+    }
+    if (!element.visible) {
+      reject('not_visible');
+      return candidates;
+    }
+    if (element.disabled) {
+      reject('disabled');
+      return candidates;
+    }
+    if (element.inForm || element.submit) {
+      reject('form_control');
+      return candidates;
+    }
+    if (element.kind === 'link' && element.href) {
+      const href = new URL(element.href);
+      if (href.origin !== origin) {
+        reject('cross_origin');
+        return candidates;
+      }
+      candidates.push({
+        id: `link-${element.index}`,
+        kind: 'navigate',
+        href: href.toString(),
+        label: element.label || 'Link',
+      });
+      candidateSummary.eligible += 1;
+      return candidates;
+    }
+    if (element.kind === 'button') {
+      candidates.push({
+        id: `button-${element.index}`,
+        kind: 'click',
+        selector: 'button, [role="button"]',
+        index: element.index,
+        label: element.label || 'Button',
+      });
+      candidateSummary.eligible += 1;
+      return candidates;
+    }
+    reject('unsupported');
+    return candidates;
+  }, []);
+  return { actions, candidateSummary };
+}
+
+async function waitForRenderedPage(page: Page, navigationTimeoutMs: number): Promise<void> {
+  const timeout = Math.min(navigationTimeoutMs, 2_000);
+  await page
+    .waitForFunction(() => document.readyState !== 'loading', undefined, { timeout })
+    .catch(() => undefined);
+  await page.waitForLoadState('networkidle', { timeout }).catch(() => undefined);
+  await page
+    .waitForSelector('a[href], button, [role="button"]', { state: 'attached', timeout })
+    .catch(() => undefined);
+}
+
+async function captureScreenshot(
+  page: Page,
+  observation: BrowserObservation,
+  options: BrowserRunOptions,
+): Promise<BrowserObservation> {
+  try {
+    const screenshot = await page.screenshot({
+      type: 'png',
+      fullPage: false,
+      timeout: options.navigationTimeoutMs,
+    });
+    if (screenshot.byteLength <= options.artifactMaxBytes) observation.screenshot = screenshot;
+    else observation.screenshotError = 'Screenshot exceeded the configured artifact size limit';
+  } catch {
+    observation.screenshotError = 'Screenshot capture failed';
+  }
+  return observation;
 }
 
 function pushLimited(target: string[], value: string, limit: number): void {

@@ -44,4 +44,8 @@ describe('loadEnvironment', () => {
       );
     },
   );
+
+  it('resolves relative artifact storage from the workspace root', () => {
+    expect(loadEnvironment(base).artifactStoragePath).toMatch(/RealityCheck\/storage$/);
+  });
 });

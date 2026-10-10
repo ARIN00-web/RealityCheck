@@ -102,10 +102,23 @@ async function processRun(job: { data: RunJobData }): Promise<void> {
       data: {
         runId,
         type: 'EXPLORATION_OBSERVATION',
-        message: `Explored ${exploration.pagesExplored} states with ${exploration.actions.length} actions`,
-        data: { ...observationData, pagesExplored: exploration.pagesExplored, usedFallback },
+        message: `Explored ${exploration.pagesExplored} states; discovered ${exploration.discoveredActions} actions and recorded ${exploration.actions.length} outcomes`,
+        data: {
+          ...observationData,
+          pagesExplored: exploration.pagesExplored,
+          discoveredActions: exploration.discoveredActions,
+          noActionReason: exploration.noActionReason,
+          candidateSummary: exploration.candidateSummary,
+          pageSummary: exploration.pageSummary,
+          usedFallback,
+        },
       },
     });
+    if (exploration.noActionReason) {
+      await prisma.runEvent.create({
+        data: { runId, type: 'EXPLORATION_NO_ACTIONS', message: exploration.noActionReason },
+      });
+    }
 
     const persistedActions = await Promise.all(
       exploration.actions.map((result, position) =>

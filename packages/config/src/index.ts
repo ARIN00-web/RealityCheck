@@ -41,7 +41,7 @@ export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): AppEnv
     throw new Error(`Invalid environment configuration:\n${issues.join('\n')}`);
   }
 
-  const artifactStoragePath = path.resolve(parsed.data.ARTIFACT_STORAGE_PATH);
+  const artifactStoragePath = resolveWorkspacePath(parsed.data.ARTIFACT_STORAGE_PATH);
   if (artifactStoragePath === path.parse(artifactStoragePath).root) {
     throw new Error('ARTIFACT_STORAGE_PATH must not resolve to a filesystem root');
   }
@@ -50,6 +50,18 @@ export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): AppEnv
     ...parsed.data,
     artifactStoragePath,
   };
+}
+
+function resolveWorkspacePath(value: string): string {
+  if (path.isAbsolute(value)) return path.resolve(value);
+  let directory = path.resolve(process.cwd());
+  while (directory !== path.parse(directory).root) {
+    if (fs.existsSync(path.join(directory, 'pnpm-workspace.yaml'))) {
+      return path.resolve(directory, value);
+    }
+    directory = path.dirname(directory);
+  }
+  return path.resolve(value);
 }
 
 export function ensureLocalStorageDirectory(environment: AppEnvironment): string {

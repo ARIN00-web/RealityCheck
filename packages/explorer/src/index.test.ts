@@ -31,6 +31,16 @@ describe('exploration planning', () => {
     expect(result).toEqual({ actions: [actions[0]], usedFallback: false });
   });
 
+  it('falls back to deterministic actions when Gemini proposes none', async () => {
+    const provider = { generate: async () => ({ text: '{"actionIds":[]}' }) };
+    await expect(
+      prioritizeActions(
+        { url: 'https://example.com', title: null, text: '', actions },
+        { provider: provider as never, timeoutMs: 10, limit: 4 },
+      ),
+    ).resolves.toEqual({ actions: [actions[0]], usedFallback: true });
+  });
+
   it('rejects destructive actions and deduplicates evidence-backed findings', () => {
     expect(selectSafeActions(actions, 4)).toEqual([actions[0]]);
     expect(
