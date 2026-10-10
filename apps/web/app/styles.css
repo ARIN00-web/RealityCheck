@@ -356,6 +356,62 @@ button:disabled {
   margin-top: 20px;
 }
 
+.action-journeys {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.action-journey {
+  border-top: 1px solid #21384e;
+  padding: 12px 0;
+}
+
+.action-journey summary {
+  cursor: pointer;
+  color: #b6c4d9;
+  font-weight: 700;
+}
+
+.action-list {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.action-list li {
+  padding: 12px;
+  border: 1px solid #29435d;
+  border-radius: 10px;
+  background: #091525;
+  overflow-wrap: anywhere;
+}
+
+.action-list p {
+  margin: 8px 0 0;
+}
+
+.action-status {
+  display: inline-block;
+  margin: 8px 0 0;
+  color: #b6f6d8;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.action-status.failed {
+  color: #ffb4bf;
+}
+
+.action-status.skipped,
+.action-status.pending {
+  color: #a9c7dc;
+}
+
 .screenshot {
   display: block;
   width: 100%;

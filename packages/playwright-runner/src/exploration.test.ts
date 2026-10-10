@@ -1,9 +1,39 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createSafeExplorationError,
   extractExplorationCandidates,
   extractExplorationCandidatesWithSummary,
   isSafeBrowserAction,
 } from './runner.js';
+
+describe('createSafeExplorationError', () => {
+  it('classifies navigation timeouts without exposing the underlying Playwright message', () => {
+    const cause = Object.assign(
+      new Error(
+        'page.goto: Timeout 15000ms exceeded for https://user:secret@example.test/?token=value',
+      ),
+      { name: 'TimeoutError' },
+    );
+
+    const error = createSafeExplorationError(cause, 'navigation');
+
+    expect(error.message).toBe('Browser navigation timed out');
+    expect(error.message).not.toContain('example.test');
+    expect(error.message).not.toContain('secret');
+    expect(error.cause).toBe(cause);
+  });
+
+  it('returns a generic safe category for non-navigation failures', () => {
+    const cause = new Error('Planner failed for https://user:secret@example.test/?token=value');
+
+    const error = createSafeExplorationError(cause, 'planning');
+
+    expect(error.message).toBe('Browser exploration failed');
+    expect(error.message).not.toContain('example.test');
+    expect(error.message).not.toContain('secret');
+    expect(error.cause).toBe(cause);
+  });
+});
 
 describe('extractExplorationCandidates', () => {
   it('extracts visible same-origin links and ordinary buttons from a controlled fixture', () => {
@@ -18,6 +48,13 @@ describe('extractExplorationCandidates', () => {
             visible: true,
           },
           { kind: 'button', label: 'Show details', index: 0, visible: true },
+          {
+            kind: 'input',
+            label: 'What needs to be done?',
+            index: 0,
+            visible: true,
+            inputType: 'text',
+          },
           { kind: 'button', label: 'Open menu', index: 1, visible: true, roleButton: true },
           {
             kind: 'link',
@@ -38,6 +75,13 @@ describe('extractExplorationCandidates', () => {
         selector: 'button, [role="button"]',
         index: 0,
         label: 'Show details',
+      },
+      {
+        id: 'input-0',
+        kind: 'fill',
+        selector: 'input',
+        index: 0,
+        label: 'What needs to be done?',
       },
       {
         id: 'button-1',
@@ -87,6 +131,7 @@ describe('extractExplorationCandidates', () => {
       anchors: 1,
       buttons: 2,
       roleButtons: 0,
+      textInputs: 0,
       eligible: 0,
       rejected: { cross_origin: 1, not_visible: 1, form_control: 1 },
     });
@@ -112,5 +157,35 @@ describe('extractExplorationCandidates', () => {
         label: 'Show details',
       }),
     ).toBe(true);
+  });
+
+  it('recognizes a TodoMVC-style text input but rejects sensitive input types', () => {
+    const result = extractExplorationCandidatesWithSummary(
+      [
+        {
+          kind: 'input',
+          label: 'What needs to be done?',
+          index: 0,
+          visible: true,
+          inputType: 'text',
+        },
+        { kind: 'input', label: 'Password', index: 1, visible: true, inputType: 'password' },
+      ],
+      'https://fixture.example',
+    );
+    expect(result.actions).toEqual([
+      {
+        id: 'input-0',
+        kind: 'fill',
+        selector: 'input',
+        index: 0,
+        label: 'What needs to be done?',
+      },
+    ]);
+    expect(result.candidateSummary).toMatchObject({
+      textInputs: 2,
+      eligible: 1,
+      rejected: { non_text_input: 1 },
+    });
   });
 });

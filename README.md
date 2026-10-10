@@ -108,6 +108,13 @@ deployment concerns.
 
 ## Known limitations
 
+### Finding verification
+
+Browser observations create candidate findings only. A finding can be marked verified only after the same
+privacy-safe fingerprint is independently reproduced in two completed runs, each with supporting browser
+error or HTTP 5xx evidence. HTTP 401, 403, 404, 429, and isolated 5xx responses are never verified by a
+single observation; authentication and optional-resource behavior may be expected.
+
 - Browser execution observes one navigation only. It does not click, submit forms, classify findings, or create regression tests.
 - Screenshot and observation history are available only after a worker has processed a queued run.
 - Docker availability and browser dependencies are environment-specific and must be checked locally.

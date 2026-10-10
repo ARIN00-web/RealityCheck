@@ -27,7 +27,7 @@ export type BrowserRunOptions = {
 
 export type ExplorationCandidateAction = {
   id: string;
-  kind: 'navigate' | 'click' | 'submit-empty';
+  kind: 'navigate' | 'click' | 'fill' | 'submit-empty';
   selector?: string;
   href?: string;
   index?: number;
@@ -35,7 +35,7 @@ export type ExplorationCandidateAction = {
 };
 
 export type InspectableElement = {
-  kind: 'link' | 'button';
+  kind: 'link' | 'button' | 'input';
   href?: string;
   label: string;
   index: number;
@@ -44,6 +44,7 @@ export type InspectableElement = {
   inForm?: boolean;
   submit?: boolean;
   roleButton?: boolean;
+  inputType?: string;
 };
 
 export type ExplorationPage = {
@@ -59,6 +60,7 @@ export type CandidateSummary = {
   anchors: number;
   buttons: number;
   roleButtons: number;
+  textInputs: number;
   eligible: number;
   rejected: Record<string, number>;
 };
@@ -85,6 +87,24 @@ export type ExplorationResult = {
   pageSummary: PageSummary;
   pagesExplored: number;
 };
+
+type ExplorationPhase = 'navigation' | 'page_inspection' | 'planning';
+
+/**
+ * Returns a user-safe error while retaining the original failure as its cause for
+ * process-level debugging. Never use the cause as a user-facing message because
+ * Playwright errors can include request URLs.
+ */
+export function createSafeExplorationError(error: unknown, phase: ExplorationPhase): Error {
+  const isTimeout =
+    error instanceof Error &&
+    (error.name === 'TimeoutError' || error.message === 'Browser run timed out');
+  const message =
+    phase === 'navigation' && isTimeout
+      ? 'Browser navigation timed out'
+      : 'Browser exploration failed';
+  return new Error(message, { cause: error });
+}
 
 export async function observeTarget(
   url: string,
@@ -148,6 +168,7 @@ export async function exploreTarget(
   const startedAt = Date.now();
   const actions: ExplorationActionResult[] = [];
   let pagesExplored = 0;
+  let phase: ExplorationPhase = 'navigation';
 
   try {
     await configureSafety(page, observation, options.observationLimit);
@@ -161,6 +182,7 @@ export async function exploreTarget(
     observation.navigation.outcome = response && response.status() >= 400 ? 'http_error' : 'loaded';
     observation.finalUrl = page.url();
     observation.title = await page.title().catch(() => null);
+    phase = 'page_inspection';
     await waitForRenderedPage(page, options.navigationTimeoutMs);
 
     const description = await describePage(page, url);
@@ -184,6 +206,7 @@ export async function exploreTarget(
         pagesExplored,
       };
     }
+    phase = 'planning';
     const proposed = await planner(description);
     const discoveredById = new Map(discovered.map((action) => [action.id, action]));
     const candidates = proposed
@@ -244,7 +267,7 @@ export async function exploreTarget(
     observation.navigation.durationMs = Date.now() - startedAt;
     observation.navigation.outcome = 'failed';
     if (error instanceof UnsafeDestinationError) throw error;
-    throw new Error('Browser exploration failed');
+    throw createSafeExplorationError(error, phase);
   } finally {
     await context.close().catch(() => undefined);
     await browser.close().catch(() => undefined);
@@ -322,6 +345,17 @@ async function describePage(page: Page, initialUrl: string): Promise<Exploration
         roleButton: element.getAttribute('role') === 'button',
       });
     });
+    document.querySelectorAll<HTMLInputElement>('input').forEach((element, index) => {
+      const rect = element.getBoundingClientRect();
+      elements.push({
+        kind: 'input',
+        label: element.getAttribute('aria-label') || element.placeholder || 'Text input',
+        index,
+        visible: rect.width > 0 && rect.height > 0,
+        disabled: element.disabled || element.readOnly,
+        inputType: (element.type || 'text').toLowerCase(),
+      });
+    });
     return {
       text: (document.body?.innerText || '').slice(0, 2_000),
       elements,
@@ -358,6 +392,13 @@ async function executeAction(
     await page.waitForLoadState('domcontentloaded', { timeout }).catch(() => undefined);
     return;
   }
+  if (action.kind === 'fill' && action.selector) {
+    await page
+      .locator(action.selector)
+      .nth(action.index ?? 0)
+      .fill('RealityCheck test item', { timeout });
+    return;
+  }
   throw new Error('Action is not allowed by the browser exploration policy');
 }
 
@@ -380,6 +421,7 @@ export function extractExplorationCandidatesWithSummary(
     anchors: 0,
     buttons: 0,
     roleButtons: 0,
+    textInputs: 0,
     eligible: 0,
     rejected: {},
   };
@@ -388,10 +430,10 @@ export function extractExplorationCandidatesWithSummary(
   };
   const actions = elements.reduce<ExplorationCandidateAction[]>((candidates, element) => {
     if (element.kind === 'link') candidateSummary.anchors += 1;
-    else {
+    else if (element.kind === 'button') {
       candidateSummary.buttons += 1;
       if (element.roleButton) candidateSummary.roleButtons += 1;
-    }
+    } else candidateSummary.textInputs += 1;
     if (!element.visible) {
       reject('not_visible');
       return candidates;
@@ -430,6 +472,21 @@ export function extractExplorationCandidatesWithSummary(
       candidateSummary.eligible += 1;
       return candidates;
     }
+    if (element.kind === 'input') {
+      if (element.inputType !== 'text' && element.inputType !== 'search') {
+        reject('non_text_input');
+        return candidates;
+      }
+      candidates.push({
+        id: `input-${element.index}`,
+        kind: 'fill',
+        selector: 'input',
+        index: element.index,
+        label: element.label || 'Text input',
+      });
+      candidateSummary.eligible += 1;
+      return candidates;
+    }
     reject('unsupported');
     return candidates;
   }, []);
@@ -443,7 +500,10 @@ async function waitForRenderedPage(page: Page, navigationTimeoutMs: number): Pro
     .catch(() => undefined);
   await page.waitForLoadState('networkidle', { timeout }).catch(() => undefined);
   await page
-    .waitForSelector('a[href], button, [role="button"]', { state: 'attached', timeout })
+    .waitForSelector('a[href], button, [role="button"], input[type="text"], input[type="search"]', {
+      state: 'attached',
+      timeout,
+    })
     .catch(() => undefined);
 }
 

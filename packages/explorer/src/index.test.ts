@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createFindings, prioritizeActions, selectSafeActions } from './index.js';
+import { canVerifyFinding, createFindings, prioritizeActions, selectSafeActions } from './index.js';
 
 const actions = [
   { id: 'safe', kind: 'click' as const, selector: 'button:nth-of-type(1)', label: 'Show details' },
@@ -53,5 +53,27 @@ describe('exploration planning', () => {
         navigationFailed: false,
       }),
     ).toMatchObject([{ title: 'Uncaught page error', affectedUrl: 'https://example.com/' }]);
+  });
+
+  it('keeps 401 and 5xx observations as candidates and requires independent reproduction for verification', () => {
+    const findings = createFindings({
+      url: 'https://example.com/',
+      actionId: null,
+      pageErrors: [],
+      failedRequests: [],
+      httpErrors: [
+        { url: 'https://example.com/refresh?token=secret', status: 401 },
+        { url: 'https://example.com/api', status: 503 },
+      ],
+      navigationFailed: false,
+    });
+    expect(findings).toHaveLength(2);
+    expect(findings[0]).toMatchObject({ confidence: 'low', actual: 'https://example.com/refresh' });
+    expect(
+      canVerifyFinding({ independentReproductions: 1, supportingEvidence: 1, statusCode: 401 }),
+    ).toBe(false);
+    expect(
+      canVerifyFinding({ independentReproductions: 2, supportingEvidence: 2, statusCode: 503 }),
+    ).toBe(true);
   });
 });

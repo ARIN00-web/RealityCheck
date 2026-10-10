@@ -211,9 +211,6 @@ async function processRun(job: { data: RunJobData }): Promise<void> {
       }),
       prisma.runEvent.create({ data: { runId, type: 'RUN_FAILED', message } }),
     ]);
-    logger.error(
-      { runId, errorType: error instanceof Error ? error.name : 'UnknownError' },
-      'Run failed',
-    );
+    logger.error({ runId, errorCategory: message }, 'Run failed');
   }
 }

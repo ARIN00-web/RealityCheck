@@ -190,6 +190,8 @@ model RegressionTest {
   id                String                 @id @default(cuid())
   findingId         String
   name              String
+  specification     Json
+  specificationVersion Int                 @default(1)
   sourceArtifactId  String?                @unique
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
@@ -198,6 +200,7 @@ model RegressionTest {
   executions        RegressionExecution[]
 
   @@index([findingId, createdAt])
+  @@unique([findingId, specificationVersion])
 }
 
 model RegressionExecution {

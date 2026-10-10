@@ -106,6 +106,31 @@ export const findingSchema = z.object({
   createdAt: z.coerce.date(),
 });
 
+export const actionDetailSchema = z.object({
+  label: z.string().nullable(),
+  beforeUrl: z.string().nullable(),
+  afterUrl: z.string().nullable(),
+  reason: z.string().nullable(),
+});
+
+export const actionSchema = z.object({
+  id: z.string(),
+  position: z.number().int().nonnegative(),
+  type: z.string(),
+  target: z.string().nullable(),
+  status: z.enum(['PENDING', 'SUCCEEDED', 'FAILED', 'SKIPPED']),
+  detail: actionDetailSchema,
+  createdAt: z.coerce.date(),
+});
+
+export const journeySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  position: z.number().int().nonnegative(),
+  status: z.enum(['PENDING', 'RUNNING', 'COMPLETED', 'FAILED']),
+  actions: z.array(actionSchema),
+});
+
 export const targetDetailSchema = targetSummarySchema.extend({
   runs: z.array(runSummarySchema),
 });
@@ -122,6 +147,7 @@ export const runDetailSchema = runListItemSchema.extend({
   events: z.array(runEventSchema),
   artifacts: z.array(artifactSchema),
   findings: z.array(findingSchema).default([]),
+  journeys: z.array(journeySchema).default([]),
 });
 
 export const runJobDataSchema = z.object({ runId: z.string().min(1) });

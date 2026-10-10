@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 export type ExplorationAction = {
   id: string;
-  kind: 'navigate' | 'click' | 'submit-empty';
+  kind: 'navigate' | 'click' | 'fill' | 'submit-empty';
   selector?: string;
   href?: string;
   label: string;
@@ -112,11 +112,21 @@ export function createFindings(input: {
 }): ExplorationFinding[] {
   const findings: ExplorationFinding[] = [];
   for (const error of unique(input.pageErrors)) {
-    findings.push(finding(input, 'page_error', 'Uncaught page error', error, 'high', 'medium', 'page_error'));
+    findings.push(
+      finding(input, 'page_error', 'Uncaught page error', error, 'high', 'medium', 'page_error'),
+    );
   }
   for (const request of unique(input.failedRequests)) {
     findings.push(
-      finding(input, 'network_error', 'Network request failed', request, 'medium', 'low', 'network'),
+      finding(
+        input,
+        'network_error',
+        'Network request failed',
+        request,
+        'medium',
+        'low',
+        'network',
+      ),
     );
   }
   for (const response of input.httpErrors) {
@@ -180,7 +190,10 @@ function finding(
         ? 'A browser request returned an HTTP error. This is an observation, not proof of an application defect.'
         : 'A browser operation produced an unexpected error observation.',
     preconditions: ['Open the affected page in a new browser context.'],
-    reproductionSteps: ['Navigate to the affected page.', 'Observe the recorded browser operation.'],
+    reproductionSteps: [
+      'Navigate to the affected page.',
+      'Observe the recorded browser operation.',
+    ],
     rationale:
       category === 'http_error'
         ? 'A single HTTP response can be expected behavior, especially for authentication, authorization, or optional resources.'
