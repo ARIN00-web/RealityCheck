@@ -1,0 +1,16 @@
+node_modules/
+.next/
+dist/
+*.tsbuildinfo
+coverage/
+.env
+.env.*
+!.env.example
+storage/*
+!storage/.gitkeep
+apps/worker/storage/
+playwright-report/
+test-results/
+blob-report/
+*.log
+

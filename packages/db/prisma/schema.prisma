@@ -1,0 +1,216 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  CANCEL_REQUESTED
+  CANCELED
+  SUCCEEDED
+  FAILED
+}
+
+enum JourneyStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ActionStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
+enum FindingStatus {
+  CANDIDATE
+  VERIFYING
+  VERIFIED
+  INCONCLUSIVE
+  RESOLVED
+}
+
+enum EvidenceKind {
+  SCREENSHOT
+  TRACE
+  CONSOLE
+  NETWORK
+  DOM_SNAPSHOT
+  ACTION_LOG
+}
+
+enum ArtifactKind {
+  GENERATED_TEST
+  REPORT
+  OTHER
+}
+
+enum RegressionExecutionStatus {
+  RUNNING
+  PASSED
+  FAILED
+  ERROR
+}
+
+model Target {
+  id        String   @id @default(cuid())
+  url       String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  runs      Run[]
+
+  @@index([url])
+}
+
+model Run {
+  id          String   @id @default(cuid())
+  targetId    String
+  status      RunStatus @default(QUEUED)
+  startedAt   DateTime?
+  completedAt DateTime?
+  error       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  target      Target   @relation(fields: [targetId], references: [id], onDelete: Restrict)
+  events      RunEvent[]
+  journeys    Journey[]
+  findings    Finding[]
+  evidence    Evidence[]
+  artifacts   Artifact[]
+
+  @@index([targetId, createdAt])
+  @@index([status, createdAt])
+}
+
+model RunEvent {
+  id        String   @id @default(cuid())
+  runId     String
+  type      String
+  message   String
+  data      Json?
+  createdAt DateTime @default(now())
+  run       Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, createdAt])
+}
+
+model Journey {
+  id        String        @id @default(cuid())
+  runId     String
+  name      String
+  position  Int
+  status    JourneyStatus @default(PENDING)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  run       Run           @relation(fields: [runId], references: [id], onDelete: Cascade)
+  actions   Action[]
+  findings  Finding[]
+
+  @@unique([runId, position])
+  @@index([runId, status])
+}
+
+model Action {
+  id        String       @id @default(cuid())
+  journeyId String
+  position  Int
+  type      String
+  target    String?
+  status    ActionStatus @default(PENDING)
+  detail    Json?
+  createdAt DateTime     @default(now())
+  journey   Journey      @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+
+  @@unique([journeyId, position])
+  @@index([journeyId, status])
+}
+
+model Finding {
+  id          String        @id @default(cuid())
+  runId       String
+  journeyId   String?
+  title       String
+  description String?
+  status      FindingStatus @default(CANDIDATE)
+  fingerprint String?
+  verifiedAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  run         Run           @relation(fields: [runId], references: [id], onDelete: Cascade)
+  journey     Journey?      @relation(fields: [journeyId], references: [id], onDelete: SetNull)
+  evidence    Evidence[]
+  artifacts   Artifact[]
+  tests       RegressionTest[]
+
+  @@index([runId, status])
+  @@index([fingerprint])
+}
+
+model Evidence {
+  id        String       @id @default(cuid())
+  runId     String
+  findingId String?
+  kind      EvidenceKind
+  storageKey String
+  metadata  Json?
+  createdAt DateTime     @default(now())
+  run       Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  finding   Finding?     @relation(fields: [findingId], references: [id], onDelete: SetNull)
+
+  @@index([runId, kind])
+  @@index([findingId])
+}
+
+model Artifact {
+  id          String       @id @default(cuid())
+  runId       String
+  findingId   String?
+  kind        ArtifactKind
+  storageKey  String
+  contentType String?
+  byteSize    Int?
+  createdAt   DateTime     @default(now())
+  run         Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  finding     Finding?     @relation(fields: [findingId], references: [id], onDelete: SetNull)
+  test        RegressionTest? @relation("RegressionTestSource")
+
+  @@index([runId, kind])
+  @@index([findingId])
+}
+
+model RegressionTest {
+  id                String                 @id @default(cuid())
+  findingId         String
+  name              String
+  sourceArtifactId  String?                @unique
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  finding           Finding                @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  sourceArtifact    Artifact?              @relation("RegressionTestSource", fields: [sourceArtifactId], references: [id], onDelete: SetNull)
+  executions        RegressionExecution[]
+
+  @@index([findingId, createdAt])
+}
+
+model RegressionExecution {
+  id               String                    @id @default(cuid())
+  regressionTestId String
+  status           RegressionExecutionStatus @default(RUNNING)
+  startedAt        DateTime                  @default(now())
+  completedAt      DateTime?
+  message          String?
+  createdAt        DateTime                  @default(now())
+  test             RegressionTest            @relation(fields: [regressionTestId], references: [id], onDelete: Cascade)
+
+  @@index([regressionTestId, createdAt])
+  @@index([status, createdAt])
+}
+

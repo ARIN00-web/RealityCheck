@@ -1,0 +1,27 @@
+{
+  "name": "@realitycheck/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@realitycheck/config": "workspace:*",
+    "@realitycheck/db": "workspace:*",
+    "@realitycheck/shared": "workspace:*",
+    "bullmq": "5.56.0",
+    "dotenv": "16.6.1",
+    "fastify": "5.4.0",
+    "ioredis": "5.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.34",
+    "tsx": "4.20.3",
+    "vitest": "3.2.4"
+  }
+}

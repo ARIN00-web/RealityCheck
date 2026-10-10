@@ -1,0 +1,31 @@
+{
+  "name": "reality-check",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.17.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "pnpm --filter @realitycheck/config build && pnpm --filter @realitycheck/shared build && pnpm --filter @realitycheck/db build && pnpm --filter @realitycheck/explorer build && pnpm --filter @realitycheck/llm build && pnpm --filter @realitycheck/playwright-runner build && pnpm --filter @realitycheck/regression build && pnpm --filter @realitycheck/api build && pnpm --filter @realitycheck/worker build && pnpm --filter @realitycheck/web build",
+    "dev:prepare": "pnpm --filter @realitycheck/config build && pnpm --filter @realitycheck/shared build && pnpm --filter @realitycheck/db build && pnpm --filter @realitycheck/llm build && pnpm --filter @realitycheck/explorer build && pnpm --filter @realitycheck/playwright-runner build",
+    "dev": "pnpm dev:prepare && concurrently --kill-others -n web,api,worker -c blue,green,yellow \"pnpm --filter @realitycheck/web dev\" \"pnpm --filter @realitycheck/api dev\" \"pnpm --filter @realitycheck/worker dev\"",
+    "dev:infra": "docker compose -f infra/docker-compose.yml up -d",
+    "down:infra": "docker compose -f infra/docker-compose.yml down",
+    "logs:infra": "docker compose -f infra/docker-compose.yml logs -f",
+    "db:generate": "pnpm --filter @realitycheck/db prisma:generate",
+    "db:migrate": "pnpm --filter @realitycheck/db prisma:migrate",
+    "db:deploy": "pnpm --filter @realitycheck/db prisma:deploy",
+    "playwright:install": "pnpm --filter @realitycheck/playwright-runner playwright:install",
+    "typecheck": "pnpm dev:prepare && pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@types/node": "22.15.34",
+    "concurrently": "9.2.0",
+    "prettier": "3.6.2",
+    "typescript": "5.8.3"
+  }
+}
