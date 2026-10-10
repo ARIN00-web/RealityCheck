@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runDetailSchema } from './index.js';
+import { regressionTestSchema, runDetailSchema } from './index.js';
 
 describe('runDetailSchema', () => {
   it('accepts ordered journey action details', () => {
@@ -42,5 +42,27 @@ describe('runDetailSchema', () => {
     });
 
     expect(result.success).toBe(true);
+  });
+});
+
+describe('regressionTestSchema', () => {
+  it('accepts the bounded deterministic specification returned by the API', () => {
+    expect(
+      regressionTestSchema.safeParse({
+        id: 'test-1',
+        findingId: 'finding-1',
+        name: 'Uncaught page error',
+        createdAt: new Date(),
+        specification: {
+          version: 1,
+          findingId: 'finding-1',
+          targetId: 'target-1',
+          initialUrl: 'https://example.test/path',
+          createdAt: new Date().toISOString(),
+          steps: [{ type: 'click', target: 'button', label: 'Show details' }],
+          assertion: { kind: 'absence_of_recorded_browser_error' },
+        },
+      }).success,
+    ).toBe(true);
   });
 });

@@ -150,6 +150,39 @@ export const runDetailSchema = runListItemSchema.extend({
   journeys: z.array(journeySchema).default([]),
 });
 
+export const regressionEligibilitySchema = z.object({
+  findingId: z.string(),
+  title: z.string(),
+  eligible: z.boolean(),
+  reason: z.string().nullable(),
+});
+export const regressionSpecificationSchema = z.object({
+  version: z.literal(1),
+  findingId: z.string(),
+  targetId: z.string(),
+  initialUrl: z.string().url(),
+  createdAt: z.string(),
+  steps: z
+    .array(
+      z.object({
+        type: z.enum(['navigate', 'click', 'fill']),
+        target: z.string(),
+        label: z.string().nullable(),
+      }),
+    )
+    .max(8),
+  assertion: z.object({
+    kind: z.enum(['absence_of_recorded_browser_error', 'http_status_not_5xx']),
+  }),
+});
+export const regressionTestSchema = z.object({
+  id: z.string(),
+  findingId: z.string(),
+  name: z.string(),
+  createdAt: z.coerce.date(),
+  specification: regressionSpecificationSchema,
+});
+
 export const runJobDataSchema = z.object({ runId: z.string().min(1) });
 export type RunJobData = z.infer<typeof runJobDataSchema>;
 

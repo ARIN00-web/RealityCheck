@@ -28,6 +28,9 @@ importers:
       '@realitycheck/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@realitycheck/regression':
+        specifier: workspace:*
+        version: link:../../packages/regression
       '@realitycheck/shared':
         specifier: workspace:*
         version: link:../../packages/shared

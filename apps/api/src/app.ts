@@ -2,6 +2,8 @@ import Fastify from 'fastify';
 import type { ReadinessCheck } from './health.js';
 import { registerTargetRoutes } from './routes/targets.js';
 import { registerRunRoutes } from './routes/runs.js';
+import { registerRegressionRoutes } from './routes/regressions.js';
+import { createRegressionRepository } from './regressions.js';
 import type { RunQueue } from './queue.js';
 import type { RunRepository } from './runs.js';
 import type { TargetRepository } from './targets.js';
@@ -12,6 +14,7 @@ export type AppDependencies = {
   runRepository: RunRepository;
   runQueue: RunQueue;
   artifactStoragePath: string;
+  prisma?: import('@realitycheck/db').PrismaClient;
 };
 
 export function buildApp({
@@ -20,6 +23,7 @@ export function buildApp({
   runRepository,
   runQueue,
   artifactStoragePath,
+  prisma,
 }: AppDependencies) {
   const app = Fastify({ logger: true });
 
@@ -43,6 +47,7 @@ export function buildApp({
 
   registerTargetRoutes(app, targetRepository);
   registerRunRoutes(app, runRepository, runQueue, artifactStoragePath);
+  if (prisma) registerRegressionRoutes(app, createRegressionRepository(prisma));
 
   app.setErrorHandler((error, request, reply) => {
     request.log.error({ errorType: error.name }, 'API request failed');

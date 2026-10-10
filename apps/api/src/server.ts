@@ -18,6 +18,7 @@ const app = buildApp({
   runRepository: createRunRepository(prisma),
   runQueue: createRunQueue(redis),
   artifactStoragePath: environment.artifactStoragePath,
+  prisma,
 });
 
 async function close(): Promise<void> {

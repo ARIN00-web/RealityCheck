@@ -13,6 +13,7 @@
   "dependencies": {
     "@realitycheck/config": "workspace:*",
     "@realitycheck/db": "workspace:*",
+    "@realitycheck/regression": "workspace:*",
     "@realitycheck/shared": "workspace:*",
     "bullmq": "5.56.0",
     "dotenv": "16.6.1",
