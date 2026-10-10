@@ -127,3 +127,42 @@ function labelFromDetail(value: unknown): string | null {
     ? ((value as Record<string, unknown>).label as string).slice(0, 160)
     : null;
 }
+
+export type RegressionReplayAssertionResult = {
+  kind: string;
+  passed: boolean;
+  actual?: unknown;
+  expected?: unknown;
+  message?: string | null;
+};
+
+export type RegressionReplayResult = {
+  status: 'PASSED' | 'FAILED';
+  assertions: RegressionReplayAssertionResult[];
+  failureReason?: string | null;
+};
+
+export interface RegressionReplayRunner {
+  replay(specification: RegressionSpecification): Promise<RegressionReplayResult>;
+}
+
+export class NotImplementedRegressionRunner implements RegressionReplayRunner {
+  async replay(_specification: RegressionSpecification): Promise<RegressionReplayResult> {
+    throw new Error('Regression replay is not yet implemented (Phase 2)');
+  }
+}
+
+export function sanitizeFailureReason(value: unknown, maxLength = 500): string {
+  if (!value) return 'Unknown error';
+  const str =
+    typeof value === 'string' ? value : value instanceof Error ? value.message : String(value);
+
+  const redacted = str
+    .replace(
+      /\b(authorization)\b\s*[:=]\s*(?:bearer\s+)?[^\r\n\s]+|\b(cookie|set-cookie|token|api[_ -]?key|password|secret)\b\s*[:=]\s*[^\s,;]+/gi,
+      (_match, auth: string | undefined, cred: string | undefined) => `${auth ?? cred}=[redacted]`,
+    )
+    .replace(/([?&](?:token|password|secret|key|api_key|access_token)=)[^&]+/gi, '$1[redacted]');
+
+  return redacted.length > maxLength ? `${redacted.slice(0, maxLength - 1)}…` : redacted;
+}

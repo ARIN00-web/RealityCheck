@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { regressionTestSchema, runDetailSchema } from './index.js';
+import {
+  regressionExecutionSchema,
+  regressionJobDataSchema,
+  regressionTestSchema,
+  runDetailSchema,
+} from './index.js';
 
 describe('runDetailSchema', () => {
   it('accepts ordered journey action details', () => {
@@ -64,5 +69,73 @@ describe('regressionTestSchema', () => {
         },
       }).success,
     ).toBe(true);
+  });
+});
+
+describe('regressionJobDataSchema', () => {
+  it('validates required regression test and execution IDs', () => {
+    expect(
+      regressionJobDataSchema.safeParse({
+        regressionTestId: 'test-1',
+        executionId: 'exec-1',
+      }).success,
+    ).toBe(true);
+
+    expect(regressionJobDataSchema.safeParse({}).success).toBe(false);
+    expect(regressionJobDataSchema.safeParse({ regressionTestId: '' }).success).toBe(false);
+    expect(
+      regressionJobDataSchema.safeParse({ regressionTestId: 'test-1', executionId: '' }).success,
+    ).toBe(false);
+  });
+});
+
+describe('regressionExecutionSchema', () => {
+  it('accepts valid execution attempts across all lifecycle statuses', () => {
+    const statuses = ['QUEUED', 'RUNNING', 'PASSED', 'FAILED', 'ERROR'] as const;
+    for (const status of statuses) {
+      const parsed = regressionExecutionSchema.safeParse({
+        id: 'exec-1',
+        regressionTestId: 'test-1',
+        attemptNumber: 1,
+        status,
+        startedAt: status === 'QUEUED' ? null : new Date(),
+        completedAt: ['PASSED', 'FAILED', 'ERROR'].includes(status) ? new Date() : null,
+        failureReason: status === 'FAILED' ? 'Assertion failed' : null,
+        assertions:
+          status === 'PASSED'
+            ? [{ kind: 'absence_of_recorded_browser_error', passed: true }]
+            : null,
+        createdAt: new Date(),
+      });
+      expect(parsed.success).toBe(true);
+    }
+  });
+
+  it('rejects invalid attempt numbers and unknown statuses', () => {
+    expect(
+      regressionExecutionSchema.safeParse({
+        id: 'exec-1',
+        regressionTestId: 'test-1',
+        attemptNumber: 0,
+        status: 'QUEUED',
+        startedAt: null,
+        completedAt: null,
+        failureReason: null,
+        createdAt: new Date(),
+      }).success,
+    ).toBe(false);
+
+    expect(
+      regressionExecutionSchema.safeParse({
+        id: 'exec-1',
+        regressionTestId: 'test-1',
+        attemptNumber: 1,
+        status: 'UNKNOWN_STATUS',
+        startedAt: null,
+        completedAt: null,
+        failureReason: null,
+        createdAt: new Date(),
+      }).success,
+    ).toBe(false);
   });
 });

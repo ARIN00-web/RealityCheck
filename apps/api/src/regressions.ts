@@ -2,9 +2,20 @@ import type { PrismaClient } from '@realitycheck/db';
 import {
   assessRegressionEligibility,
   createRegressionSpecification,
+  sanitizeFailureReason,
   type RecordedAction,
 } from '@realitycheck/regression';
-import type { RegressionSpecification } from '@realitycheck/regression';
+import {
+  regressionSpecificationSchema,
+  type RegressionExecution,
+  type RegressionSpecification,
+} from '@realitycheck/shared';
+
+export type QueuedExecutionResult =
+  | { kind: 'success'; execution: RegressionExecution }
+  | { kind: 'not_found' }
+  | { kind: 'invalid_specification'; reason: string }
+  | { kind: 'active_conflict'; activeExecutionId: string };
 
 export function createRegressionRepository(prisma: PrismaClient) {
   return {
@@ -106,8 +117,93 @@ export function createRegressionRepository(prisma: PrismaClient) {
       });
       return row ? project(row) : null;
     },
+    async createQueuedExecution(regressionTestId: string): Promise<QueuedExecutionResult> {
+      const test = await prisma.regressionTest.findUnique({
+        where: { id: regressionTestId },
+        select: { id: true, specification: true },
+      });
+      if (!test) return { kind: 'not_found' };
+
+      const specValidation = regressionSpecificationSchema.safeParse(test.specification);
+      if (!specValidation.success) {
+        return {
+          kind: 'invalid_specification',
+          reason: specValidation.error.message,
+        };
+      }
+
+      try {
+        const result = await prisma.$transaction(async (tx) => {
+          const active = await tx.regressionExecution.findFirst({
+            where: {
+              regressionTestId,
+              status: { in: ['QUEUED', 'RUNNING'] },
+            },
+            select: { id: true },
+          });
+          if (active) {
+            return { kind: 'active_conflict' as const, activeExecutionId: active.id };
+          }
+
+          const lastAttempt = await tx.regressionExecution.findFirst({
+            where: { regressionTestId },
+            orderBy: { attemptNumber: 'desc' },
+            select: { attemptNumber: true },
+          });
+          const attemptNumber = (lastAttempt?.attemptNumber ?? 0) + 1;
+
+          const created = await tx.regressionExecution.create({
+            data: {
+              regressionTestId,
+              attemptNumber,
+              status: 'QUEUED',
+              startedAt: null,
+              completedAt: null,
+              failureReason: null,
+              message: 'Regression execution queued',
+            },
+          });
+
+          return { kind: 'success' as const, execution: projectExecution(created) };
+        });
+
+        return result;
+      } catch (error: any) {
+        if (error?.code === 'P2002') {
+          return { kind: 'active_conflict', activeExecutionId: 'concurrent-active-execution' };
+        }
+        throw error;
+      }
+    },
+    async failQueueing(executionId: string, errorReason?: string): Promise<RegressionExecution> {
+      const updated = await prisma.regressionExecution.update({
+        where: { id: executionId },
+        data: {
+          status: 'ERROR',
+          completedAt: new Date(),
+          failureReason: errorReason ? sanitizeFailureReason(errorReason) : 'Queue dispatch failed',
+          message: 'Failed to enqueue regression execution job',
+        },
+      });
+      return projectExecution(updated);
+    },
+    async findExecution(id: string): Promise<RegressionExecution | null> {
+      const row = await prisma.regressionExecution.findUnique({
+        where: { id },
+      });
+      return row ? projectExecution(row) : null;
+    },
+    async listExecutions(regressionTestId: string): Promise<RegressionExecution[]> {
+      const rows = await prisma.regressionExecution.findMany({
+        where: { regressionTestId },
+        orderBy: { attemptNumber: 'desc' },
+        take: 50,
+      });
+      return rows.map(projectExecution);
+    },
   };
 }
+
 function project(row: {
   id: string;
   findingId: string;
@@ -121,5 +217,31 @@ function project(row: {
     name: row.name.slice(0, 160),
     createdAt: row.createdAt,
     specification: row.specification as RegressionSpecification,
+  };
+}
+
+function projectExecution(row: {
+  id: string;
+  regressionTestId: string;
+  attemptNumber: number;
+  status: any;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  failureReason: string | null;
+  message: string | null;
+  assertions?: unknown;
+  createdAt: Date;
+}): RegressionExecution {
+  return {
+    id: row.id,
+    regressionTestId: row.regressionTestId,
+    attemptNumber: row.attemptNumber,
+    status: row.status,
+    startedAt: row.startedAt,
+    completedAt: row.completedAt,
+    failureReason: row.failureReason,
+    message: row.message,
+    assertions: (row.assertions as any) ?? null,
+    createdAt: row.createdAt,
   };
 }

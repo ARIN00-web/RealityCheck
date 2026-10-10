@@ -1,4 +1,5 @@
 export const RUN_QUEUE_NAME = 'exploration-runs';
+export const REGRESSION_QUEUE_NAME = 'regression-runs';
 
 export type HealthResponse = {
   status: 'ok' | 'unavailable';
@@ -186,9 +187,50 @@ export const regressionTestSchema = z.object({
 export const runJobDataSchema = z.object({ runId: z.string().min(1) });
 export type RunJobData = z.infer<typeof runJobDataSchema>;
 
+export const regressionJobDataSchema = z.object({
+  regressionTestId: z.string().min(1),
+  executionId: z.string().min(1),
+});
+export type RegressionJobData = z.infer<typeof regressionJobDataSchema>;
+
+export const regressionExecutionStatusSchema = z.enum([
+  'QUEUED',
+  'RUNNING',
+  'PASSED',
+  'FAILED',
+  'ERROR',
+]);
+export type RegressionExecutionStatus = z.infer<typeof regressionExecutionStatusSchema>;
+
+export const regressionAssertionResultSchema = z.object({
+  kind: z.string(),
+  passed: z.boolean(),
+  actual: z.unknown().optional(),
+  expected: z.unknown().optional(),
+  message: z.string().nullable().optional(),
+});
+export type RegressionAssertionResult = z.infer<typeof regressionAssertionResultSchema>;
+
+export const regressionExecutionSchema = z.object({
+  id: z.string(),
+  regressionTestId: z.string(),
+  attemptNumber: z.number().int().positive(),
+  status: regressionExecutionStatusSchema,
+  startedAt: z.coerce.date().nullable(),
+  completedAt: z.coerce.date().nullable(),
+  failureReason: z.string().nullable(),
+  message: z.string().nullable().optional(),
+  assertions: z.array(regressionAssertionResultSchema).nullable().optional(),
+  createdAt: z.coerce.date(),
+});
+export type RegressionExecution = z.infer<typeof regressionExecutionSchema>;
+
 export type CreateTargetRequest = z.infer<typeof createTargetRequestSchema>;
 export type TargetSummary = z.infer<typeof targetSummarySchema>;
 export type TargetDetail = z.infer<typeof targetDetailSchema>;
 export type RunSummary = z.infer<typeof runSummarySchema>;
 export type RunListItem = z.infer<typeof runListItemSchema>;
 export type RunDetail = z.infer<typeof runDetailSchema>;
+export type RegressionEligibility = z.infer<typeof regressionEligibilitySchema>;
+export type RegressionSpecification = z.infer<typeof regressionSpecificationSchema>;
+export type RegressionTest = z.infer<typeof regressionTestSchema>;

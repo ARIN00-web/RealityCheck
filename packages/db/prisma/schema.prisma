@@ -54,6 +54,7 @@ enum ArtifactKind {
 }
 
 enum RegressionExecutionStatus {
+  QUEUED
   RUNNING
   PASSED
   FAILED
@@ -206,14 +207,19 @@ model RegressionTest {
 model RegressionExecution {
   id               String                    @id @default(cuid())
   regressionTestId String
-  status           RegressionExecutionStatus @default(RUNNING)
-  startedAt        DateTime                  @default(now())
+  attemptNumber    Int                       @default(1)
+  status           RegressionExecutionStatus @default(QUEUED)
+  startedAt        DateTime?
   completedAt      DateTime?
+  assertions       Json?
+  failureReason    String?
   message          String?
   createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
   test             RegressionTest            @relation(fields: [regressionTestId], references: [id], onDelete: Cascade)
 
   @@index([regressionTestId, createdAt])
   @@index([status, createdAt])
+  @@unique([regressionTestId, attemptNumber])
 }
 

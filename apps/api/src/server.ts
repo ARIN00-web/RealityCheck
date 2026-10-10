@@ -4,7 +4,7 @@ import { createPrismaClient } from '@realitycheck/db';
 import { Redis } from 'ioredis';
 import { buildApp } from './app.js';
 import { createReadinessCheck } from './health.js';
-import { createRunQueue } from './queue.js';
+import { createRegressionQueue, createRunQueue } from './queue.js';
 import { createRunRepository } from './runs.js';
 import { createTargetRepository } from './targets.js';
 import { startupErrorDetails } from './startup-error.js';
@@ -17,6 +17,7 @@ const app = buildApp({
   targetRepository: createTargetRepository(prisma),
   runRepository: createRunRepository(prisma),
   runQueue: createRunQueue(redis),
+  regressionQueue: createRegressionQueue(redis),
   artifactStoragePath: environment.artifactStoragePath,
   prisma,
 });

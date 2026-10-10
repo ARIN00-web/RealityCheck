@@ -4,28 +4,53 @@ import { createPrismaClient } from '@realitycheck/db';
 import { createFindings, prioritizeActions } from '@realitycheck/explorer';
 import { createGeminiProvider } from '@realitycheck/llm';
 import { exploreTarget, storePngArtifact } from '@realitycheck/playwright-runner';
-import { RUN_QUEUE_NAME, runJobDataSchema, type RunJobData } from '@realitycheck/shared';
+import {
+  REGRESSION_QUEUE_NAME,
+  RUN_QUEUE_NAME,
+  runJobDataSchema,
+  type RegressionJobData,
+  type RunJobData,
+} from '@realitycheck/shared';
 import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import { pino } from 'pino';
+import { createRegressionJobHandler } from './regression-worker.js';
 
 const logger = pino({ name: 'realitycheck-worker' });
 const environment = loadEnvironment();
 const prisma = createPrismaClient(environment.DATABASE_URL);
 const connection = new Redis(environment.REDIS_URL, { maxRetriesPerRequest: null });
+const regressionConnection = connection.duplicate();
 const storageDirectory = ensureLocalStorageDirectory(environment);
 const gemini = environment.GEMINI_API_KEY
   ? createGeminiProvider({ apiKey: environment.GEMINI_API_KEY, model: environment.GEMINI_MODEL })
   : undefined;
-const worker = new Worker<RunJobData>(RUN_QUEUE_NAME, processRun, {
+
+const runWorker = new Worker<RunJobData>(RUN_QUEUE_NAME, processRun, {
   connection,
   concurrency: environment.WORKER_CONCURRENCY,
   autorun: false,
 });
 
+const regressionWorker = new Worker<RegressionJobData>(
+  REGRESSION_QUEUE_NAME,
+  createRegressionJobHandler({ prisma, logger }),
+  {
+    connection: regressionConnection,
+    concurrency: environment.WORKER_CONCURRENCY,
+    autorun: false,
+  },
+);
+
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'Worker shutting down');
-  await Promise.all([worker.close(), prisma.$disconnect(), connection.quit()]);
+  await Promise.all([
+    runWorker.close(),
+    regressionWorker.close(),
+    prisma.$disconnect(),
+    connection.quit(),
+    regressionConnection.quit(),
+  ]);
   process.exit(0);
 }
 
@@ -33,18 +58,32 @@ process.once('SIGINT', () => void shutdown('SIGINT'));
 process.once('SIGTERM', () => void shutdown('SIGTERM'));
 
 try {
-  await Promise.all([prisma.$queryRaw`SELECT 1`, worker.waitUntilReady()]);
-  void worker.run();
+  await Promise.all([
+    prisma.$queryRaw`SELECT 1`,
+    runWorker.waitUntilReady(),
+    regressionWorker.waitUntilReady(),
+  ]);
+  void runWorker.run();
+  void regressionWorker.run();
   logger.info(
-    { queue: RUN_QUEUE_NAME, concurrency: environment.WORKER_CONCURRENCY },
-    'Worker ready for browser execution jobs',
+    {
+      queues: [RUN_QUEUE_NAME, REGRESSION_QUEUE_NAME],
+      concurrency: environment.WORKER_CONCURRENCY,
+    },
+    'Worker ready for browser execution and regression jobs',
   );
 } catch (error) {
   logger.error(
     { errorType: error instanceof Error ? error.name : 'UnknownError' },
     'Worker readiness check failed',
   );
-  await Promise.allSettled([worker.close(), prisma.$disconnect(), connection.quit()]);
+  await Promise.allSettled([
+    runWorker.close(),
+    regressionWorker.close(),
+    prisma.$disconnect(),
+    connection.quit(),
+    regressionConnection.quit(),
+  ]);
   process.exit(1);
 }
 

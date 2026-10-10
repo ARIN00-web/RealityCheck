@@ -102,6 +102,9 @@ importers:
       '@realitycheck/playwright-runner':
         specifier: workspace:*
         version: link:../../packages/playwright-runner
+      '@realitycheck/regression':
+        specifier: workspace:*
+        version: link:../../packages/regression
       '@realitycheck/shared':
         specifier: workspace:*
         version: link:../../packages/shared
