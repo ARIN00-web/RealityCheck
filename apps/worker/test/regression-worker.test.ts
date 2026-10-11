@@ -359,4 +359,67 @@ describe('createRegressionJobHandler', () => {
       }
     }
   });
+
+  it('executes a rerun of an existing regression test and preserves attempt numbering', async () => {
+    let server: http.Server | undefined;
+    const serverUrl = await new Promise<string>((resolve) => {
+      server = http.createServer((req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<!DOCTYPE html><html><body><h1>Rerun success</h1></body></html>');
+      });
+      server.listen(0, '127.0.0.1', () => {
+        const addr = server!.address() as any;
+        resolve(`http://127.0.0.1:${addr.port}`);
+      });
+    });
+
+    try {
+      const updateMock = vi.fn().mockResolvedValue({});
+      const spec = {
+        version: 1 as const,
+        findingId: 'finding-1',
+        targetId: 'target-1',
+        initialUrl: serverUrl,
+        createdAt: new Date().toISOString(),
+        steps: [],
+        assertion: { kind: 'absence_of_recorded_browser_error' as const },
+      };
+      const prisma = createMockPrisma({
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'exec-2',
+          regressionTestId: 'test-1',
+          attemptNumber: 2,
+          status: 'QUEUED',
+          test: { id: 'test-1', specification: spec },
+        }),
+        update: updateMock,
+      });
+
+      const realRunner = new PlaywrightRegressionReplayRunner({
+        navigationTimeoutMs: 5_000,
+        actionTimeoutMs: 2_000,
+        allowLocal: true,
+      });
+
+      const handler = createRegressionJobHandler({
+        prisma: prisma as any,
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        runner: realRunner,
+      });
+
+      await handler({ data: { regressionTestId: 'test-1', executionId: 'exec-2' } });
+
+      expect(updateMock).toHaveBeenCalledWith({
+        where: { id: 'exec-2' },
+        data: expect.objectContaining({
+          status: 'PASSED',
+          failureReason: null,
+        }),
+      });
+    } finally {
+      if (server) {
+        await new Promise((res) => server!.close(res));
+      }
+    }
+  });
 });

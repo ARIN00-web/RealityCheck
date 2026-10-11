@@ -225,6 +225,27 @@ export const regressionExecutionSchema = z.object({
 });
 export type RegressionExecution = z.infer<typeof regressionExecutionSchema>;
 
+export const assertionComparisonItemSchema = z.object({
+  kind: z.string(),
+  previousPassed: z.boolean().nullable(),
+  currentPassed: z.boolean(),
+  status: z.enum(['PASSED', 'FAILED', 'RECOVERED', 'REGRESSED', 'UNCHANGED']),
+  message: z.string().nullable().optional(),
+});
+export type AssertionComparisonItem = z.infer<typeof assertionComparisonItemSchema>;
+
+export const executionComparisonSchema = z.object({
+  status: z.enum(['NO_PREDECESSOR', 'INCONCLUSIVE', 'REGRESSED', 'RECOVERED', 'UNCHANGED']),
+  previousAttemptNumber: z.number().int().positive().nullable(),
+  currentAttemptNumber: z.number().int().positive(),
+  previousStatus: regressionExecutionStatusSchema.nullable(),
+  currentStatus: regressionExecutionStatusSchema,
+  headline: z.string(),
+  reason: z.string().nullable(),
+  assertions: z.array(assertionComparisonItemSchema),
+});
+export type ExecutionComparison = z.infer<typeof executionComparisonSchema>;
+
 export type CreateTargetRequest = z.infer<typeof createTargetRequestSchema>;
 export type TargetSummary = z.infer<typeof targetSummarySchema>;
 export type TargetDetail = z.infer<typeof targetDetailSchema>;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import type { RegressionQueue, RunQueue } from '../src/queue.js';
-import type { QueuedExecutionResult } from '../src/regressions.js';
+import { createRegressionRepository, type QueuedExecutionResult } from '../src/regressions.js';
 import type { RunRepository } from '../src/runs.js';
 import type { TargetRepository } from '../src/targets.js';
 import type { RegressionExecution } from '@realitycheck/shared';
@@ -258,5 +258,119 @@ describe('regression execution API endpoints', () => {
       error: { code: 'REGRESSION_EXECUTION_NOT_FOUND' },
     });
     await app.close();
+  });
+
+  it('compares execution attempts and returns comparison results', async () => {
+    const mockRepo = createMockRegressionRepository({
+      compareExecutions: async (id: string) => {
+        if (id === 'test-no-exec') return null;
+        return {
+          status: 'RECOVERED',
+          previousAttemptNumber: 1,
+          currentAttemptNumber: 2,
+          previousStatus: 'FAILED',
+          currentStatus: 'PASSED',
+          headline: 'Recovered: attempt #2 passed (previously failed on attempt #1)',
+          reason: 'All required assertions passed after previously failing.',
+          assertions: [
+            {
+              kind: 'absence_of_recorded_browser_error',
+              previousPassed: false,
+              currentPassed: true,
+              status: 'RECOVERED',
+              message: null,
+            },
+          ],
+        };
+      },
+    });
+
+    const app = createApp(mockRepo);
+
+    // Missing test -> 404
+    const missingTest = await app.inject({
+      method: 'GET',
+      url: '/api/regression-tests/missing-test/comparison',
+    });
+    expect(missingTest.statusCode).toBe(404);
+    expect(missingTest.json()).toMatchObject({
+      error: { code: 'REGRESSION_TEST_NOT_FOUND' },
+    });
+
+    // Test with no executions -> 404
+    const noExec = await app.inject({
+      method: 'GET',
+      url: '/api/regression-tests/test-1/comparison',
+    });
+    expect(noExec.statusCode).toBe(200);
+    expect(noExec.json()).toMatchObject({
+      status: 'RECOVERED',
+      previousAttemptNumber: 1,
+      currentAttemptNumber: 2,
+      headline: expect.stringContaining('Recovered'),
+      assertions: [
+        expect.objectContaining({
+          kind: 'absence_of_recorded_browser_error',
+          status: 'RECOVERED',
+        }),
+      ],
+    });
+
+    await app.close();
+  });
+});
+
+describe('createRegressionRepository.compareExecutions', () => {
+  it('returns null when no executions exist', async () => {
+    const mockPrisma = {
+      regressionExecution: {
+        findMany: async () => [],
+      },
+    };
+    const repo = createRegressionRepository(mockPrisma as any);
+    const result = await repo.compareExecutions('t-1');
+    expect(result).toBeNull();
+  });
+
+  it('compares the latest attempt with immediate predecessor from database', async () => {
+    const mockPrisma = {
+      regressionExecution: {
+        findMany: async () => [
+          {
+            id: 'e-2',
+            regressionTestId: 't-1',
+            attemptNumber: 2,
+            status: 'PASSED',
+            startedAt: new Date(),
+            completedAt: new Date(),
+            failureReason: null,
+            message: 'Replay passed',
+            assertions: [{ kind: 'absence_of_recorded_browser_error', passed: true }],
+            createdAt: new Date(),
+          },
+          {
+            id: 'e-1',
+            regressionTestId: 't-1',
+            attemptNumber: 1,
+            status: 'FAILED',
+            startedAt: new Date(),
+            completedAt: new Date(),
+            failureReason: 'Error on page',
+            message: 'Replay failed',
+            assertions: [{ kind: 'absence_of_recorded_browser_error', passed: false }],
+            createdAt: new Date(),
+          },
+        ],
+      },
+    };
+    const repo = createRegressionRepository(mockPrisma as any);
+    const result = await repo.compareExecutions('t-1');
+    expect(result).toMatchObject({
+      status: 'RECOVERED',
+      currentAttemptNumber: 2,
+      previousAttemptNumber: 1,
+      currentStatus: 'PASSED',
+      previousStatus: 'FAILED',
+    });
   });
 });

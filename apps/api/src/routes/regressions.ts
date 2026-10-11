@@ -1,4 +1,5 @@
 import {
+  executionComparisonSchema,
   regressionEligibilitySchema,
   regressionExecutionSchema,
   regressionTestSchema,
@@ -145,5 +146,30 @@ export function registerRegressionRoutes(
             message: 'Regression execution not found',
           },
         });
+  });
+
+  app.get('/api/regression-tests/:id/comparison', async (request, reply) => {
+    const id = (request.params as { id?: string }).id;
+    if (!id) {
+      return reply.code(400).send({
+        error: { code: 'VALIDATION_ERROR', message: 'A regression test ID is required' },
+      });
+    }
+    const test = await repository.find(id);
+    if (!test) {
+      return reply.code(404).send({
+        error: { code: 'REGRESSION_TEST_NOT_FOUND', message: 'Regression test not found' },
+      });
+    }
+    const comparison = await repository.compareExecutions(id);
+    if (!comparison) {
+      return reply.code(404).send({
+        error: {
+          code: 'NO_EXECUTIONS_RECORDED',
+          message: 'No executions recorded for this regression test',
+        },
+      });
+    }
+    return executionComparisonSchema.parse(comparison);
   });
 }

@@ -1,12 +1,14 @@
 import type { PrismaClient } from '@realitycheck/db';
 import {
   assessRegressionEligibility,
+  compareExecutionAttempts,
   createRegressionSpecification,
   sanitizeFailureReason,
   type RecordedAction,
 } from '@realitycheck/regression';
 import {
   regressionSpecificationSchema,
+  type ExecutionComparison,
   type RegressionExecution,
   type RegressionSpecification,
 } from '@realitycheck/shared';
@@ -200,6 +202,17 @@ export function createRegressionRepository(prisma: PrismaClient) {
         take: 50,
       });
       return rows.map(projectExecution);
+    },
+    async compareExecutions(regressionTestId: string): Promise<ExecutionComparison | null> {
+      const rows = await prisma.regressionExecution.findMany({
+        where: { regressionTestId },
+        orderBy: { attemptNumber: 'desc' },
+        take: 2,
+      });
+      if (rows.length === 0) return null;
+      const current = projectExecution(rows[0]);
+      const previous = rows.length > 1 ? projectExecution(rows[1]) : null;
+      return compareExecutionAttempts(current, previous);
     },
   };
 }

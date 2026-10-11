@@ -166,3 +166,5 @@ export function sanitizeFailureReason(value: unknown, maxLength = 500): string {
 
   return redacted.length > maxLength ? `${redacted.slice(0, maxLength - 1)}…` : redacted;
 }
+
+export * from './comparison.js';

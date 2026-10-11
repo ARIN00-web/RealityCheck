@@ -2,7 +2,13 @@
 
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { formatDate, targetLabel, type DashboardTarget } from '../../dashboard-utils';
+import {
+  formatDate,
+  targetLabel,
+  type DashboardRegressionFinding,
+  type DashboardRegressionTest,
+  type DashboardTarget,
+} from '../../dashboard-utils';
 
 type TargetDetail = DashboardTarget & {
   runs: Array<{
@@ -17,20 +23,35 @@ type TargetDetail = DashboardTarget & {
 export default function TargetDetailPage() {
   const params = useParams<{ id: string }>();
   const [target, setTarget] = useState<TargetDetail | null>(null);
+  const [regressionTests, setRegressionTests] = useState<DashboardRegressionTest[]>([]);
+  const [regressionFindings, setRegressionFindings] = useState<DashboardRegressionFinding[]>([]);
   const [message, setMessage] = useState('Loading target history…');
   const [starting, setStarting] = useState(false);
+  const [creatingFindingId, setCreatingFindingId] = useState<string | null>(null);
 
   const loadTarget = useCallback(async (): Promise<void> => {
     try {
-      const response = await fetch(`/api/targets/${params.id}`);
-      if (response.status === 404) {
+      const [targetRes, testsRes, findingsRes] = await Promise.all([
+        fetch(`/api/targets/${params.id}`),
+        fetch(`/api/targets/${params.id}/regression-tests`),
+        fetch(`/api/targets/${params.id}/regression-findings`),
+      ]);
+
+      if (targetRes.status === 404) {
         setMessage('This target no longer exists.');
         return;
       }
-      if (!response.ok) {
+      if (!targetRes.ok) {
         throw new Error('Unable to load this target history.');
       }
-      setTarget(await response.json());
+      setTarget(await targetRes.json());
+
+      if (testsRes.ok) {
+        setRegressionTests(await testsRes.json());
+      }
+      if (findingsRes.ok) {
+        setRegressionFindings(await findingsRes.json());
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Unable to load this target history.');
     }
@@ -62,6 +83,25 @@ export default function TargetDetailPage() {
     }
   }
 
+  async function createTest(findingId: string): Promise<void> {
+    setCreatingFindingId(findingId);
+    try {
+      const res = await fetch(`/api/findings/${findingId}/regression-test`, {
+        method: 'POST',
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        throw new Error(body.error?.message ?? 'Unable to create regression test.');
+      }
+      setMessage(`Regression test created: ${body.name}`);
+      await loadTarget();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to create regression test.');
+    } finally {
+      setCreatingFindingId(null);
+    }
+  }
+
   return (
     <main className="dashboard-shell detail-shell">
       <a className="back-link" href="/">
@@ -83,26 +123,129 @@ export default function TargetDetailPage() {
               {message}
             </p>
           ) : null}
-          {target.runs.length === 0 ? (
-            <div className="empty-state">
-              <p>No runs have been recorded for this target.</p>
+
+          {/* Browser runs section */}
+          <div style={{ marginTop: '28px' }}>
+            <h2>Recorded browser runs</h2>
+            {target.runs.length === 0 ? (
+              <div className="empty-state">
+                <p>No runs have been recorded for this target.</p>
+              </div>
+            ) : null}
+            <ol className="run-list detail-runs">
+              {target.runs.map((run) => (
+                <li key={run.id}>
+                  <span className={`run-status ${run.status.toLowerCase()}`}>
+                    {run.status.replaceAll('_', ' ')}
+                  </span>
+                  <div>
+                    <a className="back-link" href={`/runs/${run.id}`}>
+                      Run {run.id}
+                    </a>
+                    <time>{formatDate(run.createdAt)}</time>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          {/* Regression tests section */}
+          <section className="regression-section">
+            <div className="panel-heading">
+              <div>
+                <p className="section-kicker">Repeatable QA</p>
+                <h2>Regression tests</h2>
+              </div>
+              <span className="count">{regressionTests.length}</span>
             </div>
-          ) : null}
-          <ol className="run-list detail-runs">
-            {target.runs.map((run) => (
-              <li key={run.id}>
-                <span className={`run-status ${run.status.toLowerCase()}`}>
-                  {run.status.replaceAll('_', ' ')}
-                </span>
-                <div>
-                  <a className="back-link" href={`/runs/${run.id}`}>
-                    Run {run.id}
-                  </a>
-                  <time>{formatDate(run.createdAt)}</time>
-                </div>
-              </li>
-            ))}
-          </ol>
+
+            {regressionTests.length === 0 ? (
+              <div className="empty-state">
+                <p>No regression tests have been created for this target yet.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: '10px' }}>
+                {regressionTests.map((test) => (
+                  <article key={test.id} className="item-card">
+                    <div className="item-card-header">
+                      <div>
+                        <h3 style={{ margin: '0 0 4px', fontSize: '1.05rem' }}>{test.name}</h3>
+                        <time>{formatDate(test.createdAt)}</time>
+                      </div>
+                      <a className="back-link" href={`/regression-tests/${test.id}`}>
+                        View test & history →
+                      </a>
+                    </div>
+                    <p className="muted" style={{ margin: '4px 0 0', fontSize: '0.85rem' }}>
+                      {test.specification.steps.length} step
+                      {test.specification.steps.length === 1 ? '' : 's'} · Assertion:{' '}
+                      {test.specification.assertion.kind}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Eligible candidate findings */}
+          <section className="regression-section">
+            <div className="panel-heading">
+              <div>
+                <p className="section-kicker">Candidate bugs</p>
+                <h2>Findings eligible for regression testing</h2>
+              </div>
+              <span className="count">{regressionFindings.length}</span>
+            </div>
+
+            {regressionFindings.length === 0 ? (
+              <div className="empty-state">
+                <p>No findings recorded yet for this target.</p>
+              </div>
+            ) : (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '8px' }}>
+                {regressionFindings.map((finding) => (
+                  <li
+                    key={finding.findingId}
+                    style={{
+                      padding: '12px 16px',
+                      background: '#091525',
+                      borderRadius: '10px',
+                      border: '1px solid #243a51',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '12px',
+                    }}
+                  >
+                    <div>
+                      <strong style={{ fontSize: '0.95rem' }}>{finding.title}</strong>
+                      {finding.reason ? (
+                        <p className="muted" style={{ margin: '4px 0 0', fontSize: '0.82rem' }}>
+                          {finding.reason}
+                        </p>
+                      ) : null}
+                    </div>
+                    {finding.eligible ? (
+                      <button
+                        type="button"
+                        className="secondary-button small-button"
+                        onClick={() => createTest(finding.findingId)}
+                        disabled={creatingFindingId === finding.findingId}
+                      >
+                        {creatingFindingId === finding.findingId
+                          ? 'Creating…'
+                          : 'Create regression test'}
+                      </button>
+                    ) : (
+                      <span className="muted" style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                        Ineligible
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </section>
       ) : (
         <p className="feedback error" role="alert">

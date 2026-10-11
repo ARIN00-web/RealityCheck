@@ -337,6 +337,118 @@ button:disabled {
   color: #ffb4bf;
 }
 
+.run-status.error {
+  color: #fca5a5;
+  border-color: #873c4b;
+}
+
+.run-status.running {
+  color: #7dd3fc;
+  border-color: #0369a1;
+}
+
+.run-status.queued {
+  color: #fef08a;
+  border-color: #854d0e;
+}
+
+.comparison-card {
+  margin: 20px 0;
+  padding: 20px;
+  border: 1px solid #243a51;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #102439, #091525);
+}
+
+.comparison-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.comparison-status {
+  border: 1px solid #28445c;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 6px 12px;
+  text-transform: uppercase;
+}
+
+.comparison-status.recovered {
+  color: #34d399;
+  border-color: #065f46;
+  background: #064e3b33;
+}
+
+.comparison-status.regressed {
+  color: #f87171;
+  border-color: #991b1b;
+  background: #450a0a33;
+}
+
+.comparison-status.unchanged {
+  color: #93c5fd;
+  border-color: #1e40af;
+  background: #1e3a8a33;
+}
+
+.comparison-status.inconclusive {
+  color: #fde047;
+  border-color: #854d0e;
+  background: #713f1233;
+}
+
+.comparison-status.baseline {
+  color: #a5f3fc;
+  border-color: #0e7490;
+  background: #164e6333;
+}
+
+.secondary-button {
+  border: 1px solid #2e5277;
+  border-radius: 8px;
+  background: #152b42;
+  color: #7dd3fc;
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 8px 14px;
+}
+
+.secondary-button:hover:not(:disabled) {
+  background: #1c3b5c;
+  border-color: #64d6ff;
+}
+
+.small-button {
+  padding: 6px 10px;
+  font-size: 0.8rem;
+}
+
+.regression-section {
+  margin-top: 36px;
+  padding-top: 24px;
+  border-top: 1px solid #21384e;
+}
+
+.item-card {
+  padding: 16px;
+  border: 1px solid #243a51;
+  border-radius: 12px;
+  background: #091525;
+  margin-bottom: 12px;
+}
+
+.item-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
 .detail-shell {
   max-width: 840px;
   padding-top: 56px;
