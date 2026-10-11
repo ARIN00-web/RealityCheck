@@ -374,3 +374,43 @@ describe('createRegressionRepository.compareExecutions', () => {
     });
   });
 });
+
+describe('createRegressionRepository.verifyFinding', () => {
+  it('updates finding status to VERIFIED with verifiedAt timestamp', async () => {
+    const mockPrisma = {
+      finding: {
+        findUnique: async () => ({
+          id: 'f-1',
+          title: 'Finding 1',
+          status: 'CANDIDATE',
+          verifiedAt: null,
+        }),
+        update: async ({ data }: any) => ({
+          id: 'f-1',
+          title: 'Finding 1',
+          status: data.status,
+          verifiedAt: data.verifiedAt,
+        }),
+      },
+    };
+    const repo = createRegressionRepository(mockPrisma as any);
+    const result = await repo.verifyFinding('f-1');
+    expect(result).toMatchObject({
+      id: 'f-1',
+      title: 'Finding 1',
+      status: 'VERIFIED',
+    });
+    expect(result?.verifiedAt).toBeInstanceOf(Date);
+  });
+
+  it('returns null when finding does not exist', async () => {
+    const mockPrisma = {
+      finding: {
+        findUnique: async () => null,
+      },
+    };
+    const repo = createRegressionRepository(mockPrisma as any);
+    const result = await repo.verifyFinding('missing');
+    expect(result).toBeNull();
+  });
+});

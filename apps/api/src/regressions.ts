@@ -48,16 +48,55 @@ export function createRegressionRepository(prisma: PrismaClient) {
               },
             },
           },
+          run: {
+            select: {
+              journeys: {
+                select: {
+                  actions: {
+                    orderBy: { position: 'asc' },
+                    take: 8,
+                    select: {
+                      id: true,
+                      position: true,
+                      type: true,
+                      target: true,
+                      status: true,
+                      detail: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       });
       return findings.map((f) => {
-        const e = assessRegressionEligibility(f, (f.journey?.actions ?? []) as RecordedAction[]);
+        const actions =
+          f.journey?.actions && f.journey.actions.length > 0
+            ? f.journey.actions
+            : (f.run?.journeys?.[0]?.actions ?? []);
+        const e = assessRegressionEligibility(f, actions as RecordedAction[]);
         return {
           findingId: f.id,
           title: f.title,
           eligible: e.eligible,
           reason: e.eligible ? null : e.reason,
         };
+      });
+    },
+    async verifyFinding(findingId: string) {
+      const finding = await prisma.finding.findUnique({
+        where: { id: findingId },
+        select: { id: true, title: true, status: true, verifiedAt: true },
+      });
+      if (!finding) return null;
+      return await prisma.finding.update({
+        where: { id: findingId },
+        data: {
+          status: 'VERIFIED',
+          verifiedAt: new Date(),
+        },
+        select: { id: true, title: true, status: true, verifiedAt: true },
       });
     },
     async generate(findingId: string) {
@@ -69,7 +108,28 @@ export function createRegressionRepository(prisma: PrismaClient) {
           status: true,
           verifiedAt: true,
           description: true,
-          run: { select: { targetId: true, target: { select: { url: true } } } },
+          run: {
+            select: {
+              targetId: true,
+              target: { select: { url: true } },
+              journeys: {
+                select: {
+                  actions: {
+                    orderBy: { position: 'asc' },
+                    take: 8,
+                    select: {
+                      id: true,
+                      position: true,
+                      type: true,
+                      target: true,
+                      status: true,
+                      detail: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
           journey: {
             select: {
               actions: {
@@ -89,11 +149,15 @@ export function createRegressionRepository(prisma: PrismaClient) {
         },
       });
       if (!finding) return null;
+      const actions =
+        finding.journey?.actions && finding.journey.actions.length > 0
+          ? finding.journey.actions
+          : (finding.run?.journeys?.[0]?.actions ?? []);
       const spec = createRegressionSpecification({
         finding,
         targetId: finding.run.targetId,
         targetUrl: finding.run.target.url,
-        actions: (finding.journey?.actions ?? []) as RecordedAction[],
+        actions: actions as RecordedAction[],
       });
       const test = await prisma.regressionTest.upsert({
         where: { findingId_specificationVersion: { findingId, specificationVersion: 1 } },

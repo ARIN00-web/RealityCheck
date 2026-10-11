@@ -45,6 +45,22 @@ export function registerRegressionRoutes(
     }
   });
 
+  app.post('/api/findings/:id/verify', async (request, reply) => {
+    const id = (request.params as { id?: string }).id;
+    if (!id) {
+      return reply
+        .code(400)
+        .send({ error: { code: 'VALIDATION_ERROR', message: 'A finding ID is required' } });
+    }
+    const verified = await repository.verifyFinding(id);
+    if (!verified) {
+      return reply
+        .code(404)
+        .send({ error: { code: 'FINDING_NOT_FOUND', message: 'Finding not found' } });
+    }
+    return reply.code(200).send(verified);
+  });
+
   app.get('/api/targets/:id/regression-tests', async (request, reply) =>
     regressionTestSchema
       .array()

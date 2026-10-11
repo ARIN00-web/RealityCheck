@@ -98,10 +98,7 @@ export default function RegressionTestDetailPage() {
 
   return (
     <main className="dashboard-shell detail-shell">
-      <a
-        className="back-link"
-        href={`/targets/${test ? ((test.specification as any).targetId ?? '') : ''}`}
-      >
+      <a className="back-link" href={`/targets/${test?.specification.targetId ?? ''}`}>
         ← Target history
       </a>
 

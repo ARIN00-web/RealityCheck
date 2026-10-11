@@ -28,6 +28,7 @@ export default function TargetDetailPage() {
   const [message, setMessage] = useState('Loading target history…');
   const [starting, setStarting] = useState(false);
   const [creatingFindingId, setCreatingFindingId] = useState<string | null>(null);
+  const [verifyingFindingId, setVerifyingFindingId] = useState<string | null>(null);
 
   const loadTarget = useCallback(async (): Promise<void> => {
     try {
@@ -99,6 +100,23 @@ export default function TargetDetailPage() {
       setMessage(error instanceof Error ? error.message : 'Unable to create regression test.');
     } finally {
       setCreatingFindingId(null);
+    }
+  }
+
+  async function verifyFinding(findingId: string): Promise<void> {
+    setVerifyingFindingId(findingId);
+    try {
+      const res = await fetch(`/api/findings/${findingId}/verify`, { method: 'POST' });
+      const body = await res.json();
+      if (!res.ok) {
+        throw new Error(body.error?.message ?? 'Unable to verify finding.');
+      }
+      setMessage(`Finding verified: ${body.title}`);
+      await loadTarget();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to verify finding.');
+    } finally {
+      setVerifyingFindingId(null);
     }
   }
 
@@ -235,6 +253,16 @@ export default function TargetDetailPage() {
                         {creatingFindingId === finding.findingId
                           ? 'Creating…'
                           : 'Create regression test'}
+                      </button>
+                    ) : finding.reason ===
+                      'Only independently verified findings can become regression tests.' ? (
+                      <button
+                        type="button"
+                        className="secondary-button small-button"
+                        onClick={() => verifyFinding(finding.findingId)}
+                        disabled={verifyingFindingId === finding.findingId}
+                      >
+                        {verifyingFindingId === finding.findingId ? 'Verifying…' : 'Verify finding'}
                       </button>
                     ) : (
                       <span className="muted" style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>

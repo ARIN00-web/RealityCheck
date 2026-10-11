@@ -68,6 +68,7 @@ export default function RunDetailPage() {
   const params = useParams<{ id: string }>();
   const [run, setRun] = useState<RunDetail | null>(null);
   const [message, setMessage] = useState('Loading run details…');
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
   const loadRun = useCallback(async (): Promise<void> => {
     try {
@@ -80,6 +81,18 @@ export default function RunDetailPage() {
       setMessage(error instanceof Error ? error.message : 'Unable to load run details.');
     }
   }, [params.id]);
+
+  async function verifyFinding(findingId: string): Promise<void> {
+    setVerifyingId(findingId);
+    try {
+      const res = await fetch(`/api/findings/${findingId}/verify`, { method: 'POST' });
+      if (res.ok) {
+        await loadRun();
+      }
+    } finally {
+      setVerifyingId(null);
+    }
+  }
 
   useEffect(() => {
     void loadRun();
@@ -178,9 +191,30 @@ export default function RunDetailPage() {
                         <>
                           <strong>{finding.title}</strong>
                           <time>{formatDate(finding.createdAt)}</time>
-                          <p className="muted">
-                            {finding.status.replaceAll('_', ' ')} — candidate, not confirmed
-                          </p>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px',
+                              margin: '4px 0',
+                            }}
+                          >
+                            <span className={`run-status ${finding.status.toLowerCase()}`}>
+                              {finding.status === 'VERIFIED'
+                                ? 'Verified finding'
+                                : 'Candidate finding'}
+                            </span>
+                            {finding.status === 'CANDIDATE' ? (
+                              <button
+                                type="button"
+                                className="secondary-button small-button"
+                                onClick={() => verifyFinding(finding.id)}
+                                disabled={verifyingId === finding.id}
+                              >
+                                {verifyingId === finding.id ? 'Verifying…' : 'Verify finding'}
+                              </button>
+                            ) : null}
+                          </div>
                           {report ? (
                             <>
                               <p>{report.summary}</p>

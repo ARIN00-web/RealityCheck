@@ -1,4 +1,7 @@
 import 'dotenv/config';
+import fs from 'node:fs';
+import path from 'node:path';
+import dotenv from 'dotenv';
 import { ensureLocalStorageDirectory, loadEnvironment } from '@realitycheck/config';
 import { createPrismaClient } from '@realitycheck/db';
 import { createFindings, prioritizeActions } from '@realitycheck/explorer';
@@ -19,6 +22,18 @@ import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import { pino } from 'pino';
 import { createRegressionJobHandler } from './regression-worker.js';
+
+if (!process.env.DATABASE_URL) {
+  let dir = process.cwd();
+  while (dir !== path.parse(dir).root) {
+    const candidate = path.join(dir, '.env');
+    if (fs.existsSync(candidate)) {
+      dotenv.config({ path: candidate });
+      if (process.env.DATABASE_URL) break;
+    }
+    dir = path.dirname(dir);
+  }
+}
 
 const logger = pino({ name: 'realitycheck-worker' });
 const environment = loadEnvironment();

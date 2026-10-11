@@ -45,6 +45,7 @@ export type DashboardRegressionTest = {
   specification: {
     version: number;
     initialUrl: string;
+    targetId?: string;
     steps: Array<{ type: string; target: string; label: string | null }>;
     assertion: { kind: string };
   };

@@ -1,4 +1,7 @@
 import 'dotenv/config';
+import fs from 'node:fs';
+import path from 'node:path';
+import dotenv from 'dotenv';
 import { loadEnvironment } from '@realitycheck/config';
 import { createPrismaClient } from '@realitycheck/db';
 import { Redis } from 'ioredis';
@@ -8,6 +11,18 @@ import { createRegressionQueue, createRunQueue } from './queue.js';
 import { createRunRepository } from './runs.js';
 import { createTargetRepository } from './targets.js';
 import { startupErrorDetails } from './startup-error.js';
+
+if (!process.env.DATABASE_URL) {
+  let dir = process.cwd();
+  while (dir !== path.parse(dir).root) {
+    const candidate = path.join(dir, '.env');
+    if (fs.existsSync(candidate)) {
+      dotenv.config({ path: candidate });
+      if (process.env.DATABASE_URL) break;
+    }
+    dir = path.dirname(dir);
+  }
+}
 
 const environment = loadEnvironment();
 const prisma = createPrismaClient(environment.DATABASE_URL);
