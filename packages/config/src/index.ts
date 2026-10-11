@@ -27,6 +27,9 @@ const environmentSchema = z.object({
   EXPLORATION_ACTION_LIMIT: z.coerce.number().int().min(1).max(20).default(8),
   EXPLORATION_LLM_CALL_LIMIT: z.coerce.number().int().min(0).max(5).default(2),
   EXPLORATION_LLM_TIMEOUT_MS: z.coerce.number().int().min(500).max(15_000).default(5_000),
+  ALLOW_LOCAL_URLS: z
+    .preprocess((value) => value === 'true' || value === true || value === '1', z.boolean())
+    .default(false),
 });
 
 export type AppEnvironment = z.infer<typeof environmentSchema> & {

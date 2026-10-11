@@ -55,6 +55,7 @@ const regressionRunner = new PlaywrightRegressionReplayRunner({
   navigationTimeoutMs: environment.NAVIGATION_TIMEOUT_MS,
   overallTimeoutMs: environment.RUN_TIMEOUT_MS,
   observationLimit: environment.OBSERVATION_LIMIT,
+  allowLocal: environment.ALLOW_LOCAL_URLS,
 });
 
 const regressionWorker = new Worker<RegressionJobData>(
@@ -149,6 +150,7 @@ async function processRun(job: { data: RunJobData }): Promise<void> {
         observationLimit: environment.OBSERVATION_LIMIT,
         artifactMaxBytes: environment.ARTIFACT_MAX_BYTES,
         actionLimit: environment.EXPLORATION_ACTION_LIMIT,
+        allowLocal: environment.ALLOW_LOCAL_URLS,
       },
       async (page) => {
         const plan = await prioritizeActions(page, {

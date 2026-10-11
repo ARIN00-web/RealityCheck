@@ -31,6 +31,12 @@ export function buildApp({
 }: AppDependencies) {
   const app = Fastify({ logger: true });
 
+  app.get('/health', async () => ({
+    status: 'ok' as const,
+    service: 'api',
+    timestamp: new Date().toISOString(),
+  }));
+
   app.get('/health/live', async () => ({
     status: 'ok' as const,
     service: 'api',

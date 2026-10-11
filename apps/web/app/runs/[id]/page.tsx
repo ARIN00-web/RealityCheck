@@ -3,6 +3,9 @@
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { formatDate, targetLabel } from '../../dashboard-utils';
+import { Sidebar } from '../../components/Sidebar';
+import { Topbar } from '../../components/Topbar';
+import { BrowserMockup } from '../../components/BrowserMockup';
 
 type RunDetail = {
   id: string;
@@ -69,6 +72,10 @@ export default function RunDetailPage() {
   const [run, setRun] = useState<RunDetail | null>(null);
   const [message, setMessage] = useState('Loading run details…');
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'actions' | 'findings' | 'console' | 'events'>(
+    'actions',
+  );
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const loadRun = useCallback(async (): Promise<void> => {
     try {
@@ -97,182 +104,533 @@ export default function RunDetailPage() {
   useEffect(() => {
     void loadRun();
   }, [loadRun]);
+
   useEffect(() => {
     if (!run || (run.status !== 'QUEUED' && run.status !== 'RUNNING')) return;
     const timeout = window.setTimeout(() => void loadRun(), 3_000);
     return () => window.clearTimeout(timeout);
   }, [loadRun, run]);
 
+  const screenshotArtifact = run?.artifacts.find((a) => a.contentType === 'image/png');
+  const screenshotUrl =
+    screenshotArtifact && run ? `/api/runs/${run.id}/artifacts/${screenshotArtifact.id}` : null;
+
   return (
-    <main className="dashboard-shell detail-shell">
-      <a className="back-link" href={`/targets/${run?.target.id ?? ''}`}>
-        ← Target history
-      </a>
-      {run ? (
-        <section className="detail-card">
-          <p className="eyebrow">Browser run</p>
-          <h1>{targetLabel(run.target.url)}</h1>
-          <p className={`run-status ${run.status.toLowerCase()}`}>
-            {run.status.replaceAll('_', ' ')}
-          </p>
-          {run.status === 'SUCCEEDED' &&
-          run.events.some((event) => event.type === 'EXPLORATION_NO_ACTIONS') ? (
-            <p className="muted">
-              Execution completed, but no safe exploration actions were attempted for this page.
-            </p>
-          ) : null}
-          {run.error ? <p className="feedback error">{run.error}</p> : null}
-          <h2>Browser observations</h2>
-          {run.events.length === 0 ? (
-            <p className="muted">No browser observations recorded yet.</p>
-          ) : null}
-          <ol className="run-list detail-runs">
-            {run.events.map((event) => (
-              <li key={event.id}>
-                <div>
-                  <strong>{event.type}</strong>
-                  <time>{formatDate(event.createdAt)}</time>
-                  <p className="muted">{event.message}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-          <h2>Actions and outcomes</h2>
-          {run.journeys.every((journey) => journey.actions.length === 0) ? (
-            <p className="muted">No individual actions were recorded for this run.</p>
-          ) : (
-            <div className="action-journeys">
-              {run.journeys.map((journey) => (
-                <details className="action-journey" key={journey.id} open>
-                  <summary>
-                    {journey.name} · {journey.actions.length} action
-                    {journey.actions.length === 1 ? '' : 's'} · {journey.status.toLowerCase()}
-                  </summary>
-                  <ol className="action-list">
-                    {journey.actions.map((action) => (
-                      <li key={action.id}>
-                        <div>
-                          <strong>
-                            #{action.position + 1} · {action.type}
-                          </strong>
-                          <span className={`action-status ${action.status.toLowerCase()}`}>
-                            {action.status.toLowerCase()}
-                          </span>
-                          {action.detail.label ? <p>{action.detail.label}</p> : null}
-                          {action.target ? <p className="muted">Target: {action.target}</p> : null}
-                          {action.detail.beforeUrl || action.detail.afterUrl ? (
-                            <p className="muted">
-                              {action.detail.beforeUrl ?? 'Unknown location'} →{' '}
-                              {action.detail.afterUrl ?? 'Unknown location'}
-                            </p>
-                          ) : null}
-                          {action.detail.reason ? (
-                            <p className="muted">Outcome: {action.detail.reason}</p>
-                          ) : null}
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                </details>
-              ))}
-            </div>
-          )}
-          <h2>Candidate findings</h2>
-          {run.findings.length === 0 ? (
-            <p className="muted">No candidate findings were recorded.</p>
-          ) : (
-            <ol className="run-list detail-runs">
-              {run.findings.map((finding) => (
-                <li key={finding.id}>
+    <div className="app-shell">
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
+      <div className="app-main">
+        <Topbar onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
+
+        <main className="page-container" style={{ maxWidth: '1350px' }}>
+          <a
+            href={run ? `/targets/${run.target.id}` : '/'}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              color: 'var(--pink-hot)',
+              fontWeight: 700,
+              fontSize: '0.9rem',
+              marginBottom: '20px',
+            }}
+          >
+            ← Back to Target
+          </a>
+
+          {run ? (
+            <div>
+              {/* Run Header Card (Screen 04) */}
+              <div className="glass-panel">
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    flexWrap: 'wrap',
+                    gap: '20px',
+                  }}
+                >
                   <div>
-                    {(() => {
-                      const report = parseFindingReport(finding.description);
-                      return (
-                        <>
-                          <strong>{finding.title}</strong>
-                          <time>{formatDate(finding.createdAt)}</time>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      <span
+                        className="section-kicker"
+                        style={{ color: 'var(--pink-hot)', margin: 0 }}
+                      >
+                        Exploration Run #{run.id.slice(-6)}
+                      </span>
+                      <span className={`status-pill ${run.status.toLowerCase()}`}>
+                        {run.status.replaceAll('_', ' ')}
+                      </span>
+                    </div>
+
+                    <h1
+                      style={{
+                        fontSize: '2rem',
+                        fontWeight: 900,
+                        color: '#fff',
+                        margin: '4px 0 8px',
+                      }}
+                    >
+                      {targetLabel(run.target.url)}
+                    </h1>
+
+                    <p
+                      style={{
+                        color: 'var(--lavender-muted)',
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '0.86rem',
+                        margin: 0,
+                      }}
+                    >
+                      Target: {run.target.url} · Created {formatDate(run.createdAt)}
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <span
+                      style={{
+                        padding: '6px 14px',
+                        background: 'rgba(255, 20, 147, 0.15)',
+                        border: '1px solid rgba(255, 20, 147, 0.35)',
+                        borderRadius: '20px',
+                        fontSize: '0.82rem',
+                        color: 'var(--pink-light)',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {run.findings.length} Finding{run.findings.length === 1 ? '' : 's'} Discovered
+                    </span>
+                  </div>
+                </div>
+
+                {run.error ? (
+                  <div
+                    className="feedback-box error"
+                    style={{ marginTop: '16px', marginBottom: 0 }}
+                  >
+                    <span>{run.error}</span>
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Two Column Layout matching Screen 04 & Screen 14 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.85fr', gap: '24px' }}>
+                {/* Left Column: Interactive Tabs */}
+                <div>
+                  <div className="nav-tabs">
+                    <button
+                      type="button"
+                      className={`nav-tab-btn ${activeTab === 'actions' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('actions')}
+                    >
+                      Browser Actions ({run.journeys.reduce((sum, j) => sum + j.actions.length, 0)})
+                    </button>
+                    <button
+                      type="button"
+                      className={`nav-tab-btn ${activeTab === 'findings' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('findings')}
+                    >
+                      Findings ({run.findings.length})
+                    </button>
+                    <button
+                      type="button"
+                      className={`nav-tab-btn ${activeTab === 'console' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('console')}
+                    >
+                      Console & Network
+                    </button>
+                    <button
+                      type="button"
+                      className={`nav-tab-btn ${activeTab === 'events' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('events')}
+                    >
+                      Timeline Events ({run.events.length})
+                    </button>
+                  </div>
+
+                  {/* TAB 1: BROWSER ACTIONS */}
+                  {activeTab === 'actions' && (
+                    <div className="glass-panel" style={{ margin: 0 }}>
+                      <div className="panel-header">
+                        <div>
+                          <h3 className="panel-title">Recorded Interaction Sequence</h3>
+                          <p className="panel-subtitle">
+                            Deterministic browser actions executed during exploration
+                          </p>
+                        </div>
+                      </div>
+
+                      {run.journeys.every((j) => j.actions.length === 0) ? (
+                        <div className="empty-state-box">
+                          <p>No interactive actions were attempted for this page.</p>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {run.journeys.map((journey) => (
+                            <div
+                              key={journey.id}
+                              style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}
+                            >
+                              {journey.actions.map((action, idx) => (
+                                <div key={action.id} className="timeline-step">
+                                  <div className="step-info">
+                                    <div className="step-badge">{idx + 1}</div>
+                                    <div style={{ minWidth: 0 }}>
+                                      <div
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '10px',
+                                        }}
+                                      >
+                                        <strong
+                                          style={{
+                                            fontSize: '0.94rem',
+                                            color: '#fff',
+                                            textTransform: 'capitalize',
+                                          }}
+                                        >
+                                          {action.type}
+                                        </strong>
+                                        <span
+                                          className={`status-pill ${action.status.toLowerCase()}`}
+                                        >
+                                          {action.status.toLowerCase()}
+                                        </span>
+                                      </div>
+                                      {action.detail.label ? (
+                                        <p
+                                          style={{
+                                            margin: '4px 0 0',
+                                            fontSize: '0.85rem',
+                                            color: 'var(--lavender-mid)',
+                                          }}
+                                        >
+                                          {action.detail.label}
+                                        </p>
+                                      ) : null}
+                                      {action.target ? (
+                                        <span
+                                          style={{
+                                            fontSize: '0.78rem',
+                                            color: 'var(--text-dim)',
+                                            fontFamily: 'var(--font-mono)',
+                                          }}
+                                        >
+                                          {action.target}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </div>
+
+                                  <div className="step-meta">
+                                    <span className="duration-tag">
+                                      {action.status === 'SUCCEEDED' ? '✓ OK' : '✕'}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* TAB 2: FINDINGS */}
+                  {activeTab === 'findings' && (
+                    <div className="glass-panel" style={{ margin: 0 }}>
+                      <div className="panel-header">
+                        <div>
+                          <h3 className="panel-title">Discovered Candidate Findings</h3>
+                          <p className="panel-subtitle">
+                            Anomalies captured from browser instrumentation
+                          </p>
+                        </div>
+                      </div>
+
+                      {run.findings.length === 0 ? (
+                        <div className="empty-state-box">
+                          <p>No candidate findings recorded for this run.</p>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                          {run.findings.map((finding) => {
+                            const report = parseFindingReport(finding.description);
+                            return (
+                              <div
+                                key={finding.id}
+                                style={{
+                                  padding: '20px',
+                                  background: 'rgba(28, 10, 48, 0.75)',
+                                  border: 'var(--border-glass)',
+                                  borderRadius: '14px',
+                                  boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'flex-start',
+                                    gap: '12px',
+                                    marginBottom: '12px',
+                                  }}
+                                >
+                                  <div>
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        marginBottom: '6px',
+                                      }}
+                                    >
+                                      <span className="severity-pill high">High</span>
+                                      <span
+                                        className={`status-pill ${finding.status.toLowerCase()}`}
+                                      >
+                                        {finding.status}
+                                      </span>
+                                    </div>
+                                    <h4
+                                      style={{
+                                        fontSize: '1.15rem',
+                                        fontWeight: 800,
+                                        color: '#fff',
+                                        margin: 0,
+                                      }}
+                                    >
+                                      {finding.title}
+                                    </h4>
+                                  </div>
+
+                                  {finding.status === 'CANDIDATE' ? (
+                                    <button
+                                      type="button"
+                                      className="btn-primary btn-sm"
+                                      onClick={() => verifyFinding(finding.id)}
+                                      disabled={verifyingId === finding.id}
+                                    >
+                                      {verifyingId === finding.id ? 'Verifying…' : 'Verify finding'}
+                                    </button>
+                                  ) : (
+                                    <span
+                                      style={{
+                                        fontSize: '0.8rem',
+                                        color: '#34d399',
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      ✓ Verified
+                                    </span>
+                                  )}
+                                </div>
+
+                                {report ? (
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '8px',
+                                      fontSize: '0.88rem',
+                                    }}
+                                  >
+                                    <p style={{ color: 'var(--lavender-mid)', margin: 0 }}>
+                                      {report.summary}
+                                    </p>
+                                    <div
+                                      style={{
+                                        padding: '10px 14px',
+                                        background: 'rgba(12, 4, 22, 0.8)',
+                                        border: '1px solid rgba(255, 20, 147, 0.25)',
+                                        borderRadius: '8px',
+                                        color: '#ff94a8',
+                                        fontFamily: 'var(--font-mono)',
+                                        fontSize: '0.82rem',
+                                        wordBreak: 'break-all',
+                                      }}
+                                    >
+                                      {report.actual}
+                                    </div>
+                                    <span style={{ color: 'var(--text-dim)', fontSize: '0.78rem' }}>
+                                      Category: {report.category} · Affected URL:{' '}
+                                      {report.affectedUrl}
+                                    </span>
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* TAB 3: CONSOLE & NETWORK */}
+                  {activeTab === 'console' && (
+                    <div className="glass-panel" style={{ margin: 0 }}>
+                      <div className="panel-header">
+                        <div>
+                          <h3 className="panel-title">Console Output & HTTP Signals</h3>
+                          <p className="panel-subtitle">
+                            Errors and failed requests intercepted by Playwright
+                          </p>
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          background: 'rgba(8, 2, 16, 0.95)',
+                          border: 'var(--border-glass)',
+                          borderRadius: '10px',
+                          padding: '16px',
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '0.82rem',
+                          color: 'var(--lavender-mid)',
+                          minHeight: '220px',
+                          maxHeight: '360px',
+                          overflowY: 'auto',
+                        }}
+                      >
+                        {run.events
+                          .filter((e) => e.type === 'EXPLORATION_OBSERVATION')
+                          .map((e) => {
+                            const data = e.data as {
+                              consoleErrors?: string[];
+                              pageErrors?: string[];
+                              httpErrors?: unknown[];
+                            };
+                            return (
+                              <div key={e.id}>
+                                {data?.consoleErrors && data.consoleErrors.length > 0 ? (
+                                  <div>
+                                    <strong style={{ color: '#ff4d6d' }}>Console Errors:</strong>
+                                    {data.consoleErrors.map((err, i) => (
+                                      <p
+                                        key={i}
+                                        style={{ color: '#ff77b8', margin: '4px 0 8px 12px' }}
+                                      >
+                                        ▶ {err}
+                                      </p>
+                                    ))}
+                                  </div>
+                                ) : null}
+
+                                {data?.pageErrors && data.pageErrors.length > 0 ? (
+                                  <div style={{ marginTop: '10px' }}>
+                                    <strong style={{ color: '#fb7185' }}>
+                                      Uncaught Page Exceptions:
+                                    </strong>
+                                    {data.pageErrors.map((err, i) => (
+                                      <p
+                                        key={i}
+                                        style={{ color: '#fb7185', margin: '4px 0 8px 12px' }}
+                                      >
+                                        ✕ {err}
+                                      </p>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        <p style={{ color: 'var(--text-dim)', margin: '8px 0 0' }}>
+                          ✓ Network traffic monitored and filtered by SSRF security policy.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 4: EVENTS */}
+                  {activeTab === 'events' && (
+                    <div className="glass-panel" style={{ margin: 0 }}>
+                      <div className="panel-header">
+                        <div>
+                          <h3 className="panel-title">Execution Event Stream</h3>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {run.events.map((event) => (
                           <div
+                            key={event.id}
                             style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '10px',
-                              margin: '4px 0',
+                              padding: '12px 16px',
+                              background: 'rgba(26, 10, 44, 0.7)',
+                              border: 'var(--border-glass)',
+                              borderRadius: '10px',
                             }}
                           >
-                            <span className={`run-status ${finding.status.toLowerCase()}`}>
-                              {finding.status === 'VERIFIED'
-                                ? 'Verified finding'
-                                : 'Candidate finding'}
-                            </span>
-                            {finding.status === 'CANDIDATE' ? (
-                              <button
-                                type="button"
-                                className="secondary-button small-button"
-                                onClick={() => verifyFinding(finding.id)}
-                                disabled={verifyingId === finding.id}
+                            <div
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                marginBottom: '4px',
+                              }}
+                            >
+                              <strong
+                                style={{ fontSize: '0.88rem', color: 'var(--magenta-bright)' }}
                               >
-                                {verifyingId === finding.id ? 'Verifying…' : 'Verify finding'}
-                              </button>
-                            ) : null}
-                          </div>
-                          {report ? (
-                            <>
-                              <p>{report.summary}</p>
-                              <p className="muted">
-                                {report.category} · severity {report.severity} · confidence{' '}
-                                {report.confidence}
-                              </p>
-                              <p className="muted">Affected page: {report.affectedUrl}</p>
-                              <p className="muted">Expected: {report.expected}</p>
-                              <p className="muted">Actual: {report.actual}</p>
-                              <p className="muted">Why this is a candidate: {report.rationale}</p>
-                              {report.reproductionSteps?.length ? (
-                                <ol>
-                                  {report.reproductionSteps.map((step) => (
-                                    <li key={step}>{step}</li>
-                                  ))}
-                                </ol>
-                              ) : null}
-                              {report.evidence?.length ? (
-                                <details>
-                                  <summary>Sanitized evidence</summary>
-                                  {report.evidence.map((item) => (
-                                    <p key={`${item.kind}:${item.detail}`}>
-                                      {item.kind}: {item.detail}
-                                    </p>
-                                  ))}
-                                </details>
-                              ) : null}
-                            </>
-                          ) : finding.description ? (
-                            <p className="muted">
-                              Finding details are unavailable for this older run.
+                                {event.type}
+                              </strong>
+                              <time style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                                {formatDate(event.createdAt)}
+                              </time>
+                            </div>
+                            <p
+                              style={{
+                                margin: 0,
+                                fontSize: '0.84rem',
+                                color: 'var(--lavender-mid)',
+                              }}
+                            >
+                              {event.message}
                             </p>
-                          ) : null}
-                        </>
-                      );
-                    })()}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right Column: Cinematic Browser Mockup Frame (Screen 04 & 14) */}
+                <div>
+                  <div style={{ marginBottom: '16px' }}>
+                    <h3
+                      style={{
+                        fontSize: '1.1rem',
+                        fontWeight: 800,
+                        color: '#fff',
+                        margin: '0 0 4px',
+                      }}
+                    >
+                      Cinematic Browser Observation
+                    </h3>
+                    <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0 }}>
+                      High-resolution artifact rendered by headless Chromium
+                    </p>
                   </div>
-                </li>
-              ))}
-            </ol>
+
+                  <BrowserMockup url={run.target.url} screenshotUrl={screenshotUrl} height={380} />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="feedback-box error" role="alert">
+              <span>{message}</span>
+            </div>
           )}
-          {run.artifacts
-            .filter((artifact) => artifact.contentType === 'image/png')
-            .map((artifact) => (
-              <img
-                className="screenshot"
-                key={artifact.id}
-                src={`/api/runs/${run.id}/artifacts/${artifact.id}`}
-                alt="Captured browser screenshot"
-              />
-            ))}
-        </section>
-      ) : (
-        <p className="feedback error" role="alert">
-          {message}
-        </p>
-      )}
-    </main>
+        </main>
+      </div>
+    </div>
   );
 }

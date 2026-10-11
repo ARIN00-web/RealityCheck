@@ -23,6 +23,7 @@ export type BrowserRunOptions = {
   overallTimeoutMs: number;
   observationLimit: number;
   artifactMaxBytes: number;
+  allowLocal?: boolean;
 };
 
 export type ExplorationCandidateAction = {
@@ -110,7 +111,7 @@ export async function observeTarget(
   url: string,
   options: BrowserRunOptions,
 ): Promise<BrowserObservation> {
-  await assertSafeHttpUrl(url);
+  await assertSafeHttpUrl(url, { allowLocal: options.allowLocal });
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -118,7 +119,7 @@ export async function observeTarget(
   const startedAt = Date.now();
 
   try {
-    await configureSafety(page, result, options.observationLimit);
+    await configureSafety(page, result, options.observationLimit, options.allowLocal);
     page.setDefaultNavigationTimeout(options.navigationTimeoutMs);
     const response = await withTimeout(
       page.goto(url, { waitUntil: 'domcontentloaded' }),
@@ -160,7 +161,7 @@ export async function exploreTarget(
   options: BrowserRunOptions & { actionLimit: number },
   planner: (page: ExplorationPage) => Promise<ExplorationCandidateAction[]>,
 ): Promise<ExplorationResult> {
-  await assertSafeHttpUrl(url);
+  await assertSafeHttpUrl(url, { allowLocal: options.allowLocal });
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -171,7 +172,7 @@ export async function exploreTarget(
   let phase: ExplorationPhase = 'navigation';
 
   try {
-    await configureSafety(page, observation, options.observationLimit);
+    await configureSafety(page, observation, options.observationLimit, options.allowLocal);
     page.setDefaultNavigationTimeout(options.navigationTimeoutMs);
     const response = await withTimeout(
       page.goto(url, { waitUntil: 'domcontentloaded' }),
@@ -232,7 +233,12 @@ export async function exploreTarget(
       if (remainingMs <= 0) break;
       const beforeUrl = page.url();
       try {
-        await executeAction(page, action, Math.min(options.navigationTimeoutMs, remainingMs));
+        await executeAction(
+          page,
+          action,
+          Math.min(options.navigationTimeoutMs, remainingMs),
+          options.allowLocal,
+        );
         pagesExplored += 1;
         actions.push({ action, status: 'SUCCEEDED', beforeUrl, afterUrl: page.url(), error: null });
       } catch (error) {
@@ -293,6 +299,7 @@ async function configureSafety(
   page: Page,
   result: BrowserObservation,
   limit: number,
+  allowLocal?: boolean,
 ): Promise<void> {
   page.on('console', (message: ConsoleMessage) => {
     if (message.type() === 'error') pushLimited(result.consoleErrors, message.text(), limit);
@@ -308,7 +315,7 @@ async function configureSafety(
     const requestUrl = route.request().url();
     if (requestUrl.startsWith('data:') || requestUrl.startsWith('blob:')) return route.continue();
     try {
-      await assertSafeHttpUrl(requestUrl);
+      await assertSafeHttpUrl(requestUrl, { allowLocal });
       return route.continue();
     } catch {
       return route.abort('blockedbyclient');
@@ -378,9 +385,10 @@ async function executeAction(
   page: Page,
   action: ExplorationCandidateAction,
   timeout: number,
+  allowLocal?: boolean,
 ): Promise<void> {
   if (action.kind === 'navigate' && action.href) {
-    await assertSafeHttpUrl(action.href);
+    await assertSafeHttpUrl(action.href, { allowLocal });
     await page.goto(action.href, { waitUntil: 'domcontentloaded', timeout });
     return;
   }
