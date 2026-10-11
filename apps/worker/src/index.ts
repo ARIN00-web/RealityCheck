@@ -3,7 +3,11 @@ import { ensureLocalStorageDirectory, loadEnvironment } from '@realitycheck/conf
 import { createPrismaClient } from '@realitycheck/db';
 import { createFindings, prioritizeActions } from '@realitycheck/explorer';
 import { createGeminiProvider } from '@realitycheck/llm';
-import { exploreTarget, storePngArtifact } from '@realitycheck/playwright-runner';
+import {
+  exploreTarget,
+  PlaywrightRegressionReplayRunner,
+  storePngArtifact,
+} from '@realitycheck/playwright-runner';
 import {
   REGRESSION_QUEUE_NAME,
   RUN_QUEUE_NAME,
@@ -32,9 +36,15 @@ const runWorker = new Worker<RunJobData>(RUN_QUEUE_NAME, processRun, {
   autorun: false,
 });
 
+const regressionRunner = new PlaywrightRegressionReplayRunner({
+  navigationTimeoutMs: environment.NAVIGATION_TIMEOUT_MS,
+  overallTimeoutMs: environment.RUN_TIMEOUT_MS,
+  observationLimit: environment.OBSERVATION_LIMIT,
+});
+
 const regressionWorker = new Worker<RegressionJobData>(
   REGRESSION_QUEUE_NAME,
-  createRegressionJobHandler({ prisma, logger }),
+  createRegressionJobHandler({ prisma, logger, runner: regressionRunner }),
   {
     connection: regressionConnection,
     concurrency: environment.WORKER_CONCURRENCY,

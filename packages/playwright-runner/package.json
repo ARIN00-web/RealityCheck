@@ -16,6 +16,8 @@
     "playwright:install": "playwright install chromium"
   },
   "dependencies": {
+    "@realitycheck/regression": "workspace:*",
+    "@realitycheck/shared": "workspace:*",
     "playwright": "1.54.2"
   },
   "devDependencies": {

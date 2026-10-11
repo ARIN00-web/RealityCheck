@@ -8,7 +8,13 @@ export class UnsafeDestinationError extends Error {
   }
 }
 
-export async function assertSafeHttpUrl(value: string): Promise<URL> {
+export const unsafeActionLabel =
+  /\b(sign in|sign up|log in|login|create account|register|continue with|forgot password|reset password|buy|purchase|pay|checkout|order|delete|remove|destroy|publish|send|transfer|subscribe|logout|sign out)\b/i;
+
+export async function assertSafeHttpUrl(
+  value: string,
+  options?: { allowLocal?: boolean },
+): Promise<URL> {
   let url: URL;
   try {
     url = new URL(value);
@@ -22,18 +28,20 @@ export async function assertSafeHttpUrl(value: string): Promise<URL> {
   if (url.username || url.password) {
     throw new UnsafeDestinationError('Browser destination must not contain credentials');
   }
-  if (
-    url.hostname.toLowerCase() === 'localhost' ||
-    url.hostname.toLowerCase().endsWith('.localhost')
-  ) {
-    throw new UnsafeDestinationError('Localhost destinations are not allowed');
-  }
+  if (!options?.allowLocal) {
+    if (
+      url.hostname.toLowerCase() === 'localhost' ||
+      url.hostname.toLowerCase().endsWith('.localhost')
+    ) {
+      throw new UnsafeDestinationError('Localhost destinations are not allowed');
+    }
 
-  const addresses = isIP(url.hostname)
-    ? [{ address: url.hostname }]
-    : await lookup(url.hostname, { all: true, verbatim: true });
-  if (addresses.length === 0 || addresses.some(({ address }) => !isPublicAddress(address))) {
-    throw new UnsafeDestinationError('Browser destination does not resolve to a public address');
+    const addresses = isIP(url.hostname)
+      ? [{ address: url.hostname }]
+      : await lookup(url.hostname, { all: true, verbatim: true });
+    if (addresses.length === 0 || addresses.some(({ address }) => !isPublicAddress(address))) {
+      throw new UnsafeDestinationError('Browser destination does not resolve to a public address');
+    }
   }
   return url;
 }

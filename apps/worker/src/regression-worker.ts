@@ -1,9 +1,6 @@
 import type { PrismaClient } from '@realitycheck/db';
-import {
-  NotImplementedRegressionRunner,
-  sanitizeFailureReason,
-  type RegressionReplayRunner,
-} from '@realitycheck/regression';
+import { PlaywrightRegressionReplayRunner } from '@realitycheck/playwright-runner';
+import { sanitizeFailureReason, type RegressionReplayRunner } from '@realitycheck/regression';
 import {
   regressionJobDataSchema,
   regressionSpecificationSchema,
@@ -23,7 +20,7 @@ export type RegressionWorkerDependencies = {
 export function createRegressionJobHandler({
   prisma,
   logger = console,
-  runner = new NotImplementedRegressionRunner(),
+  runner = new PlaywrightRegressionReplayRunner(),
 }: RegressionWorkerDependencies) {
   return async function processRegressionJob(job: { data: unknown }): Promise<void> {
     // 1. Validate the incoming job payload at worker boundary

@@ -7,8 +7,8 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "build": "pnpm --filter @realitycheck/config build && pnpm --filter @realitycheck/shared build && pnpm --filter @realitycheck/db build && pnpm --filter @realitycheck/explorer build && pnpm --filter @realitycheck/llm build && pnpm --filter @realitycheck/playwright-runner build && pnpm --filter @realitycheck/regression build && pnpm --filter @realitycheck/api build && pnpm --filter @realitycheck/worker build && pnpm --filter @realitycheck/web build",
-    "dev:prepare": "pnpm --filter @realitycheck/config build && pnpm --filter @realitycheck/shared build && pnpm --filter @realitycheck/db build && pnpm --filter @realitycheck/llm build && pnpm --filter @realitycheck/explorer build && pnpm --filter @realitycheck/playwright-runner build && pnpm --filter @realitycheck/regression build",
+    "build": "pnpm --filter @realitycheck/config build && pnpm --filter @realitycheck/shared build && pnpm --filter @realitycheck/db build && pnpm --filter @realitycheck/explorer build && pnpm --filter @realitycheck/llm build && pnpm --filter @realitycheck/regression build && pnpm --filter @realitycheck/playwright-runner build && pnpm --filter @realitycheck/api build && pnpm --filter @realitycheck/worker build && pnpm --filter @realitycheck/web build",
+    "dev:prepare": "pnpm --filter @realitycheck/config build && pnpm --filter @realitycheck/shared build && pnpm --filter @realitycheck/db build && pnpm --filter @realitycheck/llm build && pnpm --filter @realitycheck/explorer build && pnpm --filter @realitycheck/regression build && pnpm --filter @realitycheck/playwright-runner build",
     "dev": "pnpm dev:prepare && concurrently --kill-others -n web,api,worker -c blue,green,yellow \"pnpm --filter @realitycheck/web dev\" \"pnpm --filter @realitycheck/api dev\" \"pnpm --filter @realitycheck/worker dev\"",
     "dev:infra": "docker compose -f infra/docker-compose.yml up -d",
     "down:infra": "docker compose -f infra/docker-compose.yml down",

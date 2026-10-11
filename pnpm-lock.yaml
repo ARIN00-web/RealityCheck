@@ -179,6 +179,12 @@ importers:
 
   packages/playwright-runner:
     dependencies:
+      '@realitycheck/regression':
+        specifier: workspace:*
+        version: link:../regression
+      '@realitycheck/shared':
+        specifier: workspace:*
+        version: link:../shared
       playwright:
         specifier: 1.54.2
         version: 1.54.2

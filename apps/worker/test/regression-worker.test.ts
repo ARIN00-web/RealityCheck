@@ -1,4 +1,6 @@
+import http from 'node:http';
 import { describe, expect, it, vi } from 'vitest';
+import { PlaywrightRegressionReplayRunner } from '@realitycheck/playwright-runner';
 import {
   NotImplementedRegressionRunner,
   type RegressionReplayRunner,
@@ -199,11 +201,10 @@ describe('createRegressionJobHandler', () => {
     });
   });
 
-  it('transitions to ERROR when default NotImplementedRegressionRunner is used (Phase 2 limitation)', async () => {
+  it('transitions to ERROR when explicit NotImplementedRegressionRunner is used', async () => {
     const updateMock = vi.fn().mockResolvedValue({});
     const prisma = createMockPrisma({ update: updateMock });
 
-    // Use default NotImplementedRegressionRunner
     const handler = createRegressionJobHandler({
       prisma: prisma as any,
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -219,5 +220,143 @@ describe('createRegressionJobHandler', () => {
         failureReason: 'Regression replay is not yet implemented (Phase 2)',
       }),
     });
+  });
+
+  it('runs real Playwright execution and persists PASSED status with assertion results', async () => {
+    let server: http.Server | undefined;
+    const serverUrl = await new Promise<string>((resolve) => {
+      server = http.createServer((req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<!DOCTYPE html><html><body><h1>Safe worker test page</h1></body></html>');
+      });
+      server.listen(0, '127.0.0.1', () => {
+        const addr = server!.address() as any;
+        resolve(`http://127.0.0.1:${addr.port}`);
+      });
+    });
+
+    try {
+      const updateMock = vi.fn().mockResolvedValue({});
+      const spec = {
+        version: 1 as const,
+        findingId: 'finding-1',
+        targetId: 'target-1',
+        initialUrl: serverUrl,
+        createdAt: new Date().toISOString(),
+        steps: [],
+        assertion: { kind: 'absence_of_recorded_browser_error' as const },
+      };
+      const prisma = createMockPrisma({
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'exec-1',
+          regressionTestId: 'test-1',
+          status: 'QUEUED',
+          test: { id: 'test-1', specification: spec },
+        }),
+        update: updateMock,
+      });
+
+      const realRunner = new PlaywrightRegressionReplayRunner({
+        navigationTimeoutMs: 5_000,
+        actionTimeoutMs: 2_000,
+        allowLocal: true,
+      });
+
+      const handler = createRegressionJobHandler({
+        prisma: prisma as any,
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        runner: realRunner,
+      });
+
+      await handler({ data: { regressionTestId: 'test-1', executionId: 'exec-1' } });
+
+      expect(updateMock).toHaveBeenCalledWith({
+        where: { id: 'exec-1' },
+        data: expect.objectContaining({
+          status: 'PASSED',
+          failureReason: null,
+          assertions: [
+            expect.objectContaining({
+              kind: 'absence_of_recorded_browser_error',
+              passed: true,
+            }),
+          ],
+        }),
+      });
+    } finally {
+      if (server) {
+        await new Promise((res) => server!.close(res));
+      }
+    }
+  });
+
+  it('runs real Playwright execution and persists FAILED status when assertions fail', async () => {
+    let server: http.Server | undefined;
+    const serverUrl = await new Promise<string>((resolve) => {
+      server = http.createServer((req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(
+          '<!DOCTYPE html><html><body><script>throw new Error("Worker test unhandled crash");</script></body></html>',
+        );
+      });
+      server.listen(0, '127.0.0.1', () => {
+        const addr = server!.address() as any;
+        resolve(`http://127.0.0.1:${addr.port}`);
+      });
+    });
+
+    try {
+      const updateMock = vi.fn().mockResolvedValue({});
+      const spec = {
+        version: 1 as const,
+        findingId: 'finding-1',
+        targetId: 'target-1',
+        initialUrl: serverUrl,
+        createdAt: new Date().toISOString(),
+        steps: [],
+        assertion: { kind: 'absence_of_recorded_browser_error' as const },
+      };
+      const prisma = createMockPrisma({
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'exec-1',
+          regressionTestId: 'test-1',
+          status: 'QUEUED',
+          test: { id: 'test-1', specification: spec },
+        }),
+        update: updateMock,
+      });
+
+      const realRunner = new PlaywrightRegressionReplayRunner({
+        navigationTimeoutMs: 5_000,
+        actionTimeoutMs: 2_000,
+        allowLocal: true,
+      });
+
+      const handler = createRegressionJobHandler({
+        prisma: prisma as any,
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        runner: realRunner,
+      });
+
+      await handler({ data: { regressionTestId: 'test-1', executionId: 'exec-1' } });
+
+      expect(updateMock).toHaveBeenCalledWith({
+        where: { id: 'exec-1' },
+        data: expect.objectContaining({
+          status: 'FAILED',
+          failureReason: expect.stringContaining('Worker test unhandled crash'),
+          assertions: [
+            expect.objectContaining({
+              kind: 'absence_of_recorded_browser_error',
+              passed: false,
+            }),
+          ],
+        }),
+      });
+    } finally {
+      if (server) {
+        await new Promise((res) => server!.close(res));
+      }
+    }
   });
 });
